@@ -5,15 +5,18 @@ try:
 except Exception:
     cv2=None
 from settings import *
+
 BASE_DIR=os.path.dirname(os.path.abspath(__file__))
 def path(p): return os.path.join(BASE_DIR,p)
 def clamp(v,a,b): return max(a,min(b,v))
+
 def load_image(p,size=None,smooth=False):
     try: img=pygame.image.load(path(p)).convert_alpha()
     except Exception:
         img=pygame.Surface((60,60),pygame.SRCALPHA); img.fill((255,0,255,180)); pygame.draw.rect(img,(0,0,0),img.get_rect(),3)
     if size: img=pygame.transform.smoothscale(img,size) if smooth else pygame.transform.scale(img,size)
     return img
+
 def get_font(sz):
     fp=path('assets/font/Minecraft.ttf')
     return pygame.font.Font(fp,sz) if os.path.exists(fp) else pygame.font.SysFont('consolas',sz,bold=True)
@@ -96,7 +99,6 @@ class VideoPlayer:
         if not self.cap:
             if self.fallback: surface.blit(self.fallback,(0,0))
             else: surface.fill((0,0,0))
-            # hiện cảnh báo nhỏ thay vì chỉ màn hồng để biết lỗi nằm ở đâu
             try:
                 f=pygame.font.SysFont('consolas',20,bold=True)
                 msg=self.error or 'MP4 chưa sẵn sàng'
@@ -117,6 +119,7 @@ class VideoPlayer:
         if self.frame: surface.blit(self.frame,(0,0))
         elif self.fallback: surface.blit(self.fallback,(0,0))
         else: surface.fill((0,0,0))
+
 QUESTION_BANK={1: [('Số liền sau của số 9 là số nào?', ['8', '10', '7', '11'], 1, 'Số liền sau của 9 là 10.'), ("Từ nào dưới đây có tiếng chứa âm 'ch'?", ['Con cá', 'Cái chổi', 'Viên phấn', 'Quả bóng'], 1, "Từ 'chổi' có âm đầu là 'ch'."), ('Phép tính nào dưới đây có kết quả nhỏ nhất?', ['2 + 3', '5 - 1', '6 - 4', '1 + 2'], 2, '6 - 4 = 2 là nhỏ nhất.'), ('Điền vần: Che chở cho con, đó là tình m____.', ['ẹ', 'a', 'u', 'ơ'], 0, "Ghép vần 'ẹ' được từ mẹ."), ('Bộ phận nào giúp em nghe thấy tiếng nhạc?', ['Mắt', 'Mũi', 'Tai', 'Tay'], 2, 'Tai giúp nghe âm thanh.'), ('Hình nào có 3 cạnh?', ['Hình vuông', 'Hình tròn', 'Hình tam giác', 'Hình chữ nhật'], 2, 'Hình tam giác có 3 cạnh.'), ('Khi gặp thầy cô giáo, em nên làm gì?', ['Đi thẳng', 'Khoanh tay chào lễ phép', 'Chạy trốn', 'Chỉ tay nói to'], 1, 'Chào lễ phép thể hiện kính trọng.'), ('Từ nào viết đúng chính tả?', ['Gà trống', 'Gà giống', 'Gà rống', 'Gà chông'], 0, 'Viết đúng là gà trống.'), ('AB dài 4cm, BC dài 5cm. Cả hai dài bao nhiêu?', ['8cm', '9cm', '10cm', '1cm'], 1, '4 + 5 = 9cm.'), ('Đâu là con vật nuôi quen thuộc?', ['Con hổ', 'Con sư tử', 'Con mèo', 'Con gấu'], 2, 'Con mèo là vật nuôi quen thuộc.')], 2: [('Tìm x, biết x - 15 = 20.', ['x = 5', 'x = 35', 'x = 25', 'x = 15'], 1, 'x = 20 + 15 = 35.'), ('Từ nào chỉ hoạt động của học sinh?', ['Đọc sách', 'Sách giáo khoa', 'Trường học', 'Chăm chỉ'], 0, 'Đọc sách là hoạt động.'), ('Một ngày có bao nhiêu giờ?', ['12 giờ', '24 giờ', '60 giờ', '48 giờ'], 1, 'Một ngày có 24 giờ.'), ('Cơ quan nào giúp chúng ta thở?', ['Tim', 'Dạ dày', 'Phổi', 'Não'], 2, 'Phổi giúp cơ thể thở.'), ('Từ nào trái nghĩa với khen ngợi?', ['Chê bai', 'Yêu mến', 'Tuyên dương', 'Thưởng'], 0, 'Trái nghĩa là chê bai.'), ('Kết quả của 5 × 4 + 10 là:', ['20', '30', '40', '14'], 1, '5×4=20, 20+10=30.'), ('Từ nào chỉ màu xanh da trời?', ['Red', 'Green', 'Yellow', 'Blue'], 3, 'Blue là xanh dương.'), ('Làm đổ hộp bút của bạn, em cần làm gì?', ['Bỏ chạy', 'Nhặt giúp và xin lỗi', 'Đổ lỗi', 'Cười lớn'], 1, 'Cần nhặt giúp và xin lỗi.'), ('Số lớn nhất có hai chữ số là?', ['10', '90', '99', '100'], 2, 'Số lớn nhất có hai chữ số là 99.'), ('Cây hấp thụ nước chủ yếu bằng bộ phận nào?', ['Lá', 'Hoa', 'Thân', 'Rễ'], 3, 'Rễ hút nước và dinh dưỡng.')], 3: [('Số gồm 3 nghìn, 5 trăm và 2 đơn vị là:', ['352', '3520', '3502', '3052'], 2, 'Viết là 3502.'), ("Bộ phận trả lời 'Để làm gì?' trong câu: Em chăm học để bố mẹ vui lòng.", ['Em chăm học', 'để bố mẹ vui lòng', 'bố mẹ vui lòng', 'học để bố mẹ vui lòng'], 1, 'Đó là bộ phận chỉ mục đích.'), ('HCN dài 8cm, rộng 5cm. Diện tích là:', ['40 cm²', '26cm', '13 cm²', '40cm'], 0, '8×5=40 cm².'), ('Trái Đất quay quanh Mặt Trời mất bao lâu?', ['1 ngày', '1 tháng', '1 năm', '1 tuần'], 2, 'Khoảng 1 năm.'), ('Từ nào chỉ người làm việc trí thức?', ['Bác sĩ', 'Công nhân', 'Thợ may', 'Nông dân'], 0, 'Bác sĩ là lao động trí thức.'), ('84 : 4 bằng bao nhiêu?', ['20', '21', '22', '12'], 1, '84:4=21.'), ('Xóa ký tự trước con trỏ dùng phím nào?', ['Enter', 'Caps Lock', 'Backspace', 'Delete'], 2, 'Backspace xóa bên trái con trỏ.'), ('How _____ is she?', ['many', 'old', 'much', 'long'], 1, 'Hỏi tuổi dùng How old.'), ('Số chia là 6, số dư lớn nhất là:', ['6', '7', '5', '1'], 2, 'Số dư nhỏ hơn số chia, lớn nhất là 5.'), ('Nhạc cụ phát âm thanh bằng cách gảy dây?', ['Đàn sáo', 'Đàn tranh', 'Kèn Trumpet', 'Trống'], 1, 'Đàn tranh dùng dây đàn.')], 4: [('Giá trị chữ số 7 trong 475.210 là:', ['700', '7.000', '70.000', '700.000'], 2, '7 ở hàng chục nghìn.'), ("Chủ ngữ trong câu 'Đoàn thuyền đánh cá buồm căng gió ra khơi.' là:", ['Đoàn thuyền', 'Đoàn thuyền đánh cá', 'Buồm căng gió', 'Đoàn thuyền đánh cá buồm căng gió'], 1, 'Chủ ngữ là Đoàn thuyền đánh cá.'), ('Phân số nào bằng 2/3?', ['4/9', '6/9', '6/8', '2/6'], 1, '6/9 rút gọn được 2/3.'), ('Nước đóng băng ở nhiệt độ nào?', ['100°C', '37°C', '10°C', '0°C'], 3, 'Nước đóng băng ở 0°C.'), ('Ai lấy thân mình lấp lỗ châu mai?', ['Phan Đình Giót', 'Bế Văn Đàn', 'Tô Vĩnh Diện', 'Kim Đồng'], 0, 'Đó là Phan Đình Giót.'), ('Đồng bằng lớn nhất nước ta là:', ['Đồng bằng Bắc Bộ', 'Đồng bằng Nam Bộ', 'Duyên hải miền Trung', 'Sông Hồng'], 1, 'Đồng bằng Nam Bộ lớn nhất.'), ('Lớp 35 HS, nữ bằng 3/5. Có bao nhiêu nam?', ['21', '14', '15', '20'], 1, 'Nữ 21, nam 14.'), ('Từ nào là từ láy?', ['Mặt mũi', 'Long lanh', 'Sách vở', 'Tươi tốt'], 1, 'Long lanh là từ láy.'), ('Thực vật tự tổng hợp dinh dưỡng nhờ quá trình nào?', ['Hô hấp', 'Thoát hơi nước', 'Quang hợp', 'Hút nước'], 2, 'Quang hợp giúp cây tạo dinh dưỡng.'), ('Yesterday, my family _____ to the zoo.', ['go', 'goes', 'went', 'going'], 2, 'Yesterday dùng quá khứ: went.')], 5: [("Số thập phân 'Không đơn vị, hai mươi lăm phần trăm' là:", ['0,25', '0,025', '25,0', '0,205'], 0, 'Viết là 0,25.'), ('Vì... nên... biểu thị quan hệ gì?', ['Giả thiết - Kết quả', 'Nguyên nhân - Kết quả', 'Tương phản', 'Tăng tiến'], 1, 'Đó là quan hệ nguyên nhân - kết quả.'), ('Diện tích hình tròn bán kính 2cm là:', ['6,28 cm²', '12,56 cm²', '12,56 cm', '3,14 cm²'], 1, 'S=2×2×3,14=12,56.'), ('Chất nào tồn tại ở cả 3 thể?', ['Sắt', 'Không khí', 'Nước', 'Thủy ngân'], 2, 'Nước có rắn, lỏng, khí.'), ('Ngày Quốc khánh Việt Nam là:', ['30/4', '19/8', '2/9', '22/12'], 2, 'Quốc khánh là 2/9.'), ('Đất liền Việt Nam nằm trên bán đảo nào?', ['Đông Dương', 'Triều Tiên', 'Mã Lai', 'Ả Rập'], 0, 'Việt Nam nằm trên bán đảo Đông Dương.'), ('Ô tô đi 50 km/giờ trong 2,5 giờ. Quãng đường là:', ['125 km', '20 km', '100 km', '12,5 km'], 0, '50×2,5=125 km.'), ('Thành ngữ nào nói về dũng cảm?', ['Kề vai sát cánh', 'Vào sinh ra tử', 'Uống nước nhớ nguồn', 'Nhường cơm sẻ áo'], 1, 'Vào sinh ra tử chỉ sự dũng cảm.'), ('Nguồn năng lượng sạch và vô tận là:', ['Than đá', 'Dầu mỏ', 'Năng lượng mặt trời', 'Khí đốt'], 2, 'Năng lượng mặt trời là sạch và vô tận.'), ('She is the _____ student in my class.', ['good', 'better', 'best', 'well'], 2, 'So sánh nhất của good là best.')]}
 class Audio:
     def __init__(self):
@@ -182,7 +185,6 @@ class Player:
         if self.dmg_cd>0: self.dmg_cd-=1
         self.rect.x=clamp(self.rect.x,-20,WIDTH-25); self.x=self.rect.x
     def draw_sword_wave(self,screen):
-        # Sóng kiếm đậm hơn và bên trái được mirror từ bên phải để không bị ngược vòng cung.
         progress=(ATTACK_TIME-self.attack)/max(1,ATTACK_TIME)
         alpha=max(185, int(255*(1-progress*0.25)))
         wave=pygame.Surface((78,124), pygame.SRCALPHA)
@@ -263,10 +265,8 @@ class Boss(Enemy):
     def update(self): super().update(); self.fire=(self.fire+1)%180
     def fire_rect(self):
         if not (45<self.fire<95): return pygame.Rect(0,0,0,0)
-        # Ảnh gốc rồng quay/phun sang trái. Khi đi sang phải phải lật ảnh và đặt lửa bên phải, tránh phun từ đuôi.
         return pygame.Rect(self.rect.right-16,self.rect.y+54,150,46) if self.dir>0 else pygame.Rect(self.rect.left-136,self.rect.y+54,150,46)
     def draw(self,screen):
-        # Fix: dir > 0 thì lật ảnh để đầu/miệng rồng quay sang phải; dir < 0 giữ ảnh gốc quay trái.
         img=pygame.transform.flip(self.img,True,False) if self.dir>0 else self.img
         screen.blit(img,img.get_rect(midbottom=self.rect.midbottom)); fr=self.fire_rect()
         if fr.w:
@@ -276,11 +276,9 @@ class Game:
     def __init__(self):
         pygame.init(); self.audio=Audio(); info=pygame.display.Info(); self.display=pygame.display.set_mode((WIDTH,HEIGHT),pygame.RESIZABLE); self.screen=pygame.Surface((WIDTH,HEIGHT)).convert_alpha(); pygame.display.set_caption(TITLE); self.clock=pygame.time.Clock(); self.f=get_font(28); self.big=get_font(58); self.small=get_font(18); self.state='opening'; self.idx=0; self.grade=None; self.full=False; self.question_attempts=0; self.question_feedback=None; self.question_locked=False; self.question_result_until=0; self.mana=MAX_MANA; self.mana_regen_tick=0; self.mana_flash=0; self.skill_msg=''; self.skill_msg_time=0; self.cooldowns={'Q':0,'E':0,'R':0,'T':0}; self.shield_time=0; self.dash_inv_time=0; self.skill_waves=[]; self.star_bursts=[]; self.dash_trails=[]; self.load_assets(); self.load_levels(); self.audio.load(); self.audio.play_music('opening')
     def load_assets(self):
-        # Fallback ảnh cũ nếu chưa có MP4 hoặc chưa cài opencv-python.
         self.opening_img=load_image('assets/scenes/opening.png',(WIDTH,HEIGHT),True)
         self.tutorial_img=load_image('assets/scenes/tutorial.png',(WIDTH,HEIGHT),True)
         self.ending_img=load_image('assets/scenes/ending.png',(WIDTH,HEIGHT),True)
-        # MP4 tự lặp lại cho tới khi người chơi bấm Enter/Tab.
         self.videos={
             'opening': VideoPlayer(['opening','Opening'], self.opening_img),
             'tutorial': VideoPlayer(['tutorial','Tutorial','Hướng dẫn chơi'], self.tutorial_img),
@@ -422,8 +420,6 @@ class Game:
         boss_ok=not self.boss or not self.boss.alive
         if self.player.rect.colliderect(pygame.Rect(self.lvl['portal'])) and self.collected>=self.lvl['required_coins'] and boss_ok: self.audio.sound('portal'); self.start_question()
     def ui(self):
-        # HUD không khung lớn, toàn bộ cụm được căn giữa ngang màn hình.
-        # Xu được căn giữa theo dãy tim; thanh mana được căn giữa theo dòng Mana.
         top_y=12
         hearts_x=230
         heart_size=42
@@ -435,14 +431,10 @@ class Game:
         mana_bar_w=170
         skills_x=696
 
-        # 5 tim kích thước cũ.
         for i in range(MAX_HEALTH):
             self.screen.blit(self.hfull if i<self.player.health else self.hempty,(hearts_x+i*heart_step,top_y))
 
-        # Xu nằm giữa dãy tim.
         draw_outline_text(self.screen,self.f,f"Xu: {self.collected}/{self.lvl['required_coins']}",(255,255,255),(hearts_center,top_y+55),width=2,center=True)
-
-        # Mana thẳng hàng dọc với tim; chữ và thanh dùng cùng một tâm ngang.
         draw_outline_text(self.screen,self.f,f"Mana: {int(self.mana)}/{MAX_MANA}",(255,255,255),(mana_center,top_y+21),width=2,center=True)
         bar=pygame.Rect(mana_center-mana_bar_w//2,top_y+53,mana_bar_w,21)
         pygame.draw.rect(self.screen,(5,10,20),bar,border_radius=9)
@@ -454,7 +446,6 @@ class Game:
         pygame.draw.rect(self.screen,(0,0,0),bar,3,border_radius=9)
         pygame.draw.rect(self.screen,(245,185,65),bar,2,border_radius=9)
 
-        # Bốn ô skill ở bên phải, nền đen xanh rất nhẹ và trong suốt.
         skill_data=[('Q',SKILL_WAVE_COST,SKILL_WAVE_COOLDOWN),('E',SKILL_SHIELD_COST,SKILL_SHIELD_COOLDOWN),('R',SKILL_DASH_COST,SKILL_DASH_COOLDOWN),('T',SKILL_STORM_COST,SKILL_STORM_COOLDOWN)]
         box_w=49; box_h=54; gap=10; icon_y=top_y+29
         for i,(key,cost,max_cd) in enumerate(skill_data):
@@ -543,4 +534,9 @@ class Game:
             elif self.state=='ending': self.draw_scene('ending')
             elif self.state=='ending_wait': self.draw_ending_wait()
             self.present(); self.clock.tick(FPS)
-if __name__=='__main__': Game().run()
+
+app = Game()
+handler = app.run
+
+if __name__=='__main__':
+    app.run()
