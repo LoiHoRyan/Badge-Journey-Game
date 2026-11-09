@@ -1,106 +1,102 @@
-# 🏅 HÀNH TRÌNH HUY HIỆU (BADGE JOURNEY)
+# 🏅 BADGE JOURNEY
 
-> **Chơi để khám phá – Học để vươn xa.**
+> **Play to explore – Learn to reach further.**
 
-**Hành Trình Huy Hiệu (Badge Journey)** là một tựa game platformer 2D mang phong cách pixel-art kết hợp hoạt hình, được xây dựng bằng Python. Người chơi đồng hành cùng nhân vật hiệp sĩ, khám phá những vùng đất khác nhau, vượt qua thử thách, thu thập huy hiệu và tiến đến những cột mốc mới trong hành trình.
+**Badge Journey** is a 2D pixel-art platformer game with animated elements, built using Python. Players take on the role of a knight, exploring diverse lands, overcoming challenges, collecting badges, and reaching new milestones along the way.
 
-Dự án hướng đến trải nghiệm giải trí kết hợp khám phá và học hỏi, với thế giới game có màu sắc tươi sáng, phù hợp với trẻ em và thanh thiếu niên.
+The project aims to provide an entertaining experience that blends exploration with learning, featuring a vibrant, colorful game world suitable for children and teenagers.
 
 ---
 
-## ✨ Điểm nổi bật
+## ✨ Key Features
 
-- **Thế giới đa dạng:** hành trình được thiết kế qua nhiều vùng đất với bối cảnh và thử thách riêng.
-- **Khám phá và thu thập:** người chơi di chuyển qua các màn chơi, thu thập huy hiệu và mở rộng hành trình.
-- **Thử thách và chiến đấu:** đối mặt với chướng ngại vật, kẻ địch và trùm cuối.
-- **Hệ thống kỹ năng:** sử dụng các kỹ năng theo phím Q, E, R và T; mỗi kỹ năng tiêu hao một lượng mana khác nhau.
-- **Phong cách hình ảnh:** đồ họa pixel-art tươi sáng, kết hợp cảm giác phiêu lưu kỳ ảo.
-- **Dữ liệu màn chơi:** các thông tin màn chơi được tổ chức bằng dữ liệu để thuận tiện quản lý và phát triển.
+- **Diverse Worlds:** The journey spans multiple lands, each with its own unique setting and challenges.
+- **Exploration and Collection:** Players navigate through levels, collecting badges to expand their journey.
+- **Challenges and Combat:** Face off against obstacles, enemies, and final bosses.
+- **Skill System:** Utilize skills via the Q, E, R, and T keys; each skill consumes a specific amount of mana.
+- **Visual Style:** Bright, pixel-art graphics that evoke a sense of fantasy adventure.
+- **Level Data:** Game level information is structured as data, facilitating easy management and future development.
 
-## 🌍 Thế giới trong game
+## 🌍 Game Worlds
 
-Hành trình dự kiến đi qua 10 thế giới:
+The journey is planned to span 10 distinct worlds:
 
-| STT | Thế giới |
+| No. | World |
 |---:|---|
-| 1 | Đồng cỏ |
-| 2 | Sa mạc |
-| 3 | Bãi biển |
-| 4 | Rừng sâu |
-| 5 | Vùng tuyết |
-| 6 | Núi lửa |
-| 7 | Thành phố trên mây |
-| 8 | Nhà máy cơ khí |
-| 9 | Không gian |
-| 10 | Đền cổ cuối cùng |
+| 1 | Grasslands |
+| 2 | Desert |
+| 3 | Beach |
+| 4 | Deep Forest |
+| 5 | Snowy Region |
+| 6 | Volcano |
+| 7 | City in the Clouds |
+| 8 | Mechanical Factory |
+| 9 | Space |
+| 10 | The Last Ancient Temple |
 
-*Danh sách trên thể hiện định hướng thiết kế của dự án; nội dung và tiến độ từng thế giới có thể thay đổi trong quá trình phát triển.*
+*The list above outlines the project's design direction; the content and progress of each world are subject to change during development.*
 
-## 🕹️ Điều khiển
+## 🕹️ Controls
 
-| Phím | Chức năng |
+| Key | Function |
 |---|---|
-| Q | Sử dụng kỹ năng Q (tiêu hao 20 mana) |
-| E | Sử dụng kỹ năng E (tiêu hao 30 mana) |
-| R | Sử dụng kỹ năng R (tiêu hao 25 mana) |
-| T | Sử dụng kỹ năng T (tiêu hao 60 mana) |
+| Q | Use Q skill (consumes 20 mana) |
+| E | Use E skill (consumes 30 mana) |
+| R | Use R skill (consumes 25 mana) |
+| T | Use T skill (consumes 60 mana) |
 
-> Các phím di chuyển, nhảy, tương tác và những thao tác khác cần xem phần hướng dẫn trong game hoặc cấu hình điều khiển của phiên bản hiện tại.
+> For movement, jumping, interaction, and other actions, please refer to the in-game tutorial or the control configuration for the current version.
 
-## 🧰 Công nghệ và công cụ
+## 🧰 Technologies and Tools
 
-- **Python:** ngôn ngữ lập trình chính.
-- **JSON:** lưu trữ dữ liệu màn chơi.
-- **Tiled:** công cụ thiết kế bản đồ (nếu được sử dụng trong phiên bản hiện tại).
-- **PyInstaller:** cấu hình đóng gói ứng dụng desktop thông qua tệp `.spec`.
+- **Python:** Primary programming language.
+- **JSON:** Used for storing level data.
+- **Tiled:** Map design tool (if utilized in the current version).
+- **PyInstaller:** Used for packaging the desktop application via a `.spec` file.
 
-Các thư viện Python cần thiết được khai báo trong `requirements.txt`.
-
-## 📁 Cấu trúc dự án
+Required Python libraries are listed in `requirements.txt`. ## 📁 Project Structure
 
 ```text
 Badge-Journey-Game/
-├── assets/                 # Hình ảnh và tài nguyên game
-├── data/                   # Dữ liệu phục vụ trò chơi
-├── music/                  # Nhạc và âm thanh
-├── saves/                  # Dữ liệu lưu trò chơi (nếu có)
-├── main.py                 # Điểm khởi chạy chương trình
-├── settings.py             # Các thiết lập của game
-├── levels.json             # Dữ liệu màn chơi
-├── game_icon.ico           # Biểu tượng game
-├── requirements.txt        # Danh sách thư viện Python
-├── Badge Journey.spec      # Cấu hình đóng gói PyInstaller
-├── Badge Journey.md        # Tài liệu dự án
-├── .gitignore              # Các tệp/thư mục không đưa lên Git
-└── README.md               # Giới thiệu và hướng dẫn dự án
+├── assets/                 # Game images and resources
+├── data/                   # Game-related data
+├── music/                  # Music and sound effects
+├── saves/                  # Game save data (if applicable)
+├── main.py                 # Program entry point
+├── settings.py             # Game settings
+├── levels.json             # Level data
+├── game_icon.ico           # Game icon
+├── requirements.txt        # List of Python dependencies
+├── Badge Journey.spec      # PyInstaller build configuration
+├── Badge Journey.md        # Project documentation
+├── .gitignore              # Files/folders to exclude from Git
+└── README.md               # Project introduction and instructions
 ```
 
-*Cấu trúc có thể được điều chỉnh theo phiên bản mã nguồn mới nhất.*
+*The structure may be subject to change based on the latest version of the source code.*
 
-## 🚀 Cài đặt và chạy game
+## 🚀 Installation and Running the Game
 
-### 1. Yêu cầu
+### 1. Requirements
 
-- Máy tính Windows, macOS hoặc Linux có cài Python tương thích với các thư viện trong dự án.
-- Git (nếu tải mã nguồn bằng Git).
-- Các tài nguyên đi kèm repository.
+- A Windows, macOS, or Linux computer with a version of Python compatible with the project's dependencies.
+- Git (if cloning the source code via Git).
+- All resources included in the repository.
 
-### 2. Tải mã nguồn
+### 2. Downloading the Source Code
 
 ```bash
 git clone https://github.com/LoiHoRyan/Badge-Journey-Game.git
 cd Badge-Journey-Game
 ```
 
-Hoặc tải repository dưới dạng ZIP từ GitHub và giải nén.
-
-### 3. Tạo môi trường ảo (khuyến nghị)
+Alternatively, download the repository as a ZIP file from GitHub and extract it. ### 3. Create a virtual environment (recommended)
 
 ```bash
 python -m venv .venv
 ```
 
-Kích hoạt môi trường ảo:
+Activate the virtual environment:
 
 **Windows (CMD):**
 ```bat
@@ -117,47 +113,40 @@ Kích hoạt môi trường ảo:
 source .venv/bin/activate
 ```
 
-### 4. Cài đặt thư viện
+### 4. Install dependencies
 
 ```bash
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 5. Khởi chạy
+### 5. Run the project
 
 ```bash
 python main.py
 ```
 
-Nếu dự án yêu cầu cấu hình hoặc tài nguyên bổ sung, hãy kiểm tra các hướng dẫn tương ứng trong thư mục và tài liệu đi kèm.
+If the project requires additional configuration or resources, please check the relevant instructions provided in the project folders or documentation.
 
-## 💾 Dữ liệu lưu trò chơi
+## 💾 Game Save Data
 
-Thư mục `saves/` được dành cho dữ liệu lưu tiến trình chơi nếu phiên bản hiện tại sử dụng cơ chế lưu này. Không nên đưa dữ liệu cá nhân hoặc tệp lưu riêng của người chơi lên repository công khai. Có thể cung cấp một tệp lưu mẫu riêng nếu cần thiết.
+The `saves/` directory is intended for storing game progress, provided the current version utilizes this save mechanism. Please do not upload personal data or individual player save files to a public repository. You may include a sample save file if necessary.
 
-## 🛠️ Phát triển dự án
+## 🛠️ Project Development
 
-Bạn có thể đóng góp bằng cách:
+You can contribute by:
 
-1. Fork repository.
-2. Tạo nhánh mới cho thay đổi của mình.
-3. Thực hiện và kiểm tra thay đổi.
-4. Gửi Pull Request kèm mô tả rõ ràng.
+1. Forking the repository.
+2. Creating a new branch for your changes.
+3. Implementing and testing your changes.
+4. Submitting a Pull Request with a clear description.
 
-Khi bổ sung tài nguyên, hãy đặt chúng vào đúng thư mục và cập nhật đường dẫn tham chiếu trong mã nguồn hoặc dữ liệu game.
+When adding new resources, please place them in the appropriate directories and update the corresponding file paths within the source code or game data.
 
-## 📌 Trạng thái dự án
+## 📌 Project Status
 
-Badge Journey đang trong quá trình phát triển. Tính năng, màn chơi, hình ảnh và nội dung có thể tiếp tục được cập nhật.
+Badge Journey is currently under development. Features, levels, visuals, and content are subject to ongoing updates.
 
-## 📄 Bản quyền và tài nguyên
+## 📄 Copyright and Resources
 
-Các tài nguyên trong dự án có thể bao gồm mã nguồn, hình ảnh, âm thanh, phông chữ và dữ liệu từ nhiều nguồn khác nhau. Vui lòng kiểm tra quyền sử dụng và thông tin giấy phép của từng tài nguyên trước khi sao chép, chỉnh sửa hoặc phân phối lại.
-
----
-
-<p align="center">
-  <strong>HÀNH TRÌNH HUY HIỆU – BADGE JOURNEY</strong><br>
-  <em>Chơi để khám phá – Học để vươn xa.</em>
-</p>
+The resources within this project—including source code, images, audio, fonts, and data—may originate from various sources. Please verify the applicable permissions.
