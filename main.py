@@ -1,120 +1,223 @@
 # -*- coding: utf-8 -*-
-import os, json, sys, pygame, math
+import os, json, sys, math, mimetypes
+from urllib.parse import unquote
+
+try:
+    import pygame
+except Exception:
+    pygame = None
+
 try:
     import cv2
 except Exception:
-    cv2=None
+    cv2 = None
+
+try:
+    from flask import Flask, Response, jsonify, send_file
+    _HAS_FLASK = True
+except Exception:
+    _HAS_FLASK = False
+    class Flask:
+        def __init__(self, name, **kwargs):
+            self.name = name
+            self._routes = {}
+        def route(self, rule, **options):
+            def decorator(fn):
+                self._routes[rule] = fn
+                return fn
+            return decorator
+        def __call__(self, environ, start_response):
+            path_info = unquote(environ.get('PATH_INFO', '/') or '/')
+            if path_info in ('/', '/index.html'):
+                body = WEB_HTML.encode('utf-8')
+                start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Content-Length', str(len(body)))])
+                return [body]
+            if path_info == '/api/config':
+                body = json.dumps(build_web_config(), ensure_ascii=False).encode('utf-8')
+                start_response('200 OK', [('Content-Type', 'application/json; charset=utf-8'), ('Content-Length', str(len(body)))])
+                return [body]
+            rel = resolve_rel(path_info.lstrip('/'))
+            if rel:
+                fp = os.path.join(BASE_DIR, rel)
+                if os.path.isfile(fp):
+                    ctype = mimetypes.guess_type(fp)[0] or 'application/octet-stream'
+                    with open(fp, 'rb') as f:
+                        data = f.read()
+                    start_response('200 OK', [('Content-Type', ctype), ('Content-Length', str(len(data)))])
+                    return [data]
+            msg = b'Not Found'
+            start_response('404 Not Found', [('Content-Type', 'text/plain; charset=utf-8'), ('Content-Length', str(len(msg)))])
+            return [msg]
+
 from settings import *
 
-BASE_DIR=os.path.dirname(os.path.abspath(__file__))
-def path(p): return os.path.join(BASE_DIR,p)
-def clamp(v,a,b): return max(a,min(b,v))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def load_image(p,size=None,smooth=False):
-    try: img=pygame.image.load(path(p)).convert_alpha()
+def resolve_rel(rel_p):
+    rel_p = str(rel_p).replace('\\', '/').lstrip('/')
+    if not rel_p or '..' in rel_p.split('/'):
+        return None
+    full = os.path.join(BASE_DIR, rel_p)
+    if os.path.exists(full):
+        return rel_p
+    parts = rel_p.split('/')
+    cur = BASE_DIR
+    resolved = []
+    for part in parts:
+        cand = os.path.join(cur, part)
+        if os.path.exists(cand):
+            resolved.append(part)
+            cur = cand
+        elif os.path.isdir(cur):
+            matches = [f for f in os.listdir(cur) if f.lower() == part.lower()]
+            if matches:
+                resolved.append(matches[0])
+                cur = os.path.join(cur, matches[0])
+            else:
+                return None
+        else:
+            return None
+    return '/'.join(resolved)
+
+def path(p):
+    rel = resolve_rel(p)
+    return os.path.join(BASE_DIR, rel if rel else p)
+
+def clamp(v, a, b):
+    return max(a, min(b, v))
+
+def load_image(p, size=None, smooth=False):
+    try:
+        img = pygame.image.load(path(p)).convert_alpha()
     except Exception:
-        img=pygame.Surface((60,60),pygame.SRCALPHA); img.fill((255,0,255,180)); pygame.draw.rect(img,(0,0,0),img.get_rect(),3)
-    if size: img=pygame.transform.smoothscale(img,size) if smooth else pygame.transform.scale(img,size)
+        img = pygame.Surface((60, 60), pygame.SRCALPHA)
+        img.fill((255, 0, 255, 180))
+        pygame.draw.rect(img, (0, 0, 0), img.get_rect(), 3)
+    if size:
+        img = pygame.transform.smoothscale(img, size) if smooth else pygame.transform.scale(img, size)
     return img
 
 def get_font(sz):
-    fp=path('assets/font/Minecraft.ttf')
-    return pygame.font.Font(fp,sz) if os.path.exists(fp) else pygame.font.SysFont('consolas',sz,bold=True)
+    fp = path('assets/font/Minecraft.ttf')
+    return pygame.font.Font(fp, sz) if os.path.exists(fp) else pygame.font.SysFont('consolas', sz, bold=True)
 
 def find_video_file(names):
-    candidates=[]
+    candidates = []
     for name in names:
-        base=os.path.splitext(name)[0]
-        for folder in ('assets/scenes','assets/Scenes','.'):
-            candidates.append(os.path.join(folder, base+'.mp4'))
-            candidates.append(os.path.join(folder, base+'.MP4'))
+        base = os.path.splitext(name)[0]
+        for folder in ('assets/scenes', 'assets/Scenes', '.'):
+            candidates.append(os.path.join(folder, base + '.mp4'))
+            candidates.append(os.path.join(folder, base + '.MP4'))
             candidates.append(os.path.join(folder, base))
     for rel in candidates:
         if os.path.exists(path(rel)):
             return path(rel)
-    wanted={os.path.splitext(n)[0].lower() for n in names}
+    wanted = {os.path.splitext(n)[0].lower() for n in names}
     for folder in (path('assets/scenes'), BASE_DIR):
         if os.path.isdir(folder):
             for fn in os.listdir(folder):
-                stem,ext=os.path.splitext(fn)
-                if stem.lower() in wanted and ext.lower()=='.mp4':
-                    return os.path.join(folder,fn)
+                stem, ext = os.path.splitext(fn)
+                if stem.lower() in wanted and ext.lower() == '.mp4':
+                    return os.path.join(folder, fn)
     return None
 
 def wrap_text(text, font_obj, max_width):
-    words=str(text).split(' ')
-    lines=[]; current=''
+    words = str(text).split(' ')
+    lines = []
+    current = ''
     for word in words:
-        test=word if not current else current+' '+word
+        test = word if not current else current + ' ' + word
         if font_obj.size(test)[0] <= max_width:
-            current=test
+            current = test
         else:
-            if current: lines.append(current)
-            current=word
-    if current: lines.append(current)
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
     return lines
 
 def draw_wrapped_text(surface, text, font_obj, color, x, y, max_width, line_gap=6, center=False):
     for line in wrap_text(text, font_obj, max_width):
-        img=font_obj.render(line, True, color)
-        rect=img.get_rect()
+        img = font_obj.render(line, True, color)
+        rect = img.get_rect()
         if center:
-            rect.centerx=x+max_width//2; rect.y=y
+            rect.centerx = x + max_width // 2
+            rect.y = y
         else:
-            rect.topleft=(x,y)
+            rect.topleft = (x, y)
         surface.blit(img, rect)
-        y += img.get_height()+line_gap
+        y += img.get_height() + line_gap
     return y
 
 class VideoPlayer:
     def __init__(self, names, fallback_surface=None, size=(WIDTH, HEIGHT)):
-        self.size=size; self.fallback=fallback_surface
-        self.video_path=find_video_file(names)
-        self.cap=None; self.fps=30; self.frame=None; self.last_tick=0
-        self.error=''
+        self.size = size
+        self.fallback = fallback_surface
+        self.video_path = find_video_file(names)
+        self.cap = None
+        self.fps = 30
+        self.frame = None
+        self.last_tick = 0
+        self.error = ''
         if self.video_path and cv2 is not None:
             self.open()
         elif self.video_path and cv2 is None:
-            self.error='Chuyển động MP4 cần opencv-python'
+            self.error = 'Chuyển động MP4 cần opencv-python'
         else:
-            self.error='Khong tim thay file MP4'
+            self.error = 'Khong tim thay file MP4'
     def open(self):
         try:
-            self.cap=cv2.VideoCapture(self.video_path)
+            self.cap = cv2.VideoCapture(self.video_path)
             if not self.cap or not self.cap.isOpened():
-                self.cap=None; self.error='Khong mo duoc MP4'; return
-            fps=self.cap.get(cv2.CAP_PROP_FPS)
-            self.fps=fps if fps and fps>1 else 30
+                self.cap = None
+                self.error = 'Khong mo duoc MP4'
+                return
+            fps = self.cap.get(cv2.CAP_PROP_FPS)
+            self.fps = fps if fps and fps > 1 else 30
         except Exception as e:
-            self.cap=None; self.error=str(e)
+            self.cap = None
+            self.error = str(e)
     def reset(self):
         if self.cap:
-            try: self.cap.set(cv2.CAP_PROP_POS_FRAMES,0)
-            except Exception: pass
+            try:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            except Exception:
+                pass
     def draw(self, surface):
         if not self.cap:
-            if self.fallback: surface.blit(self.fallback,(0,0))
-            else: surface.fill((0,0,0))
+            if self.fallback:
+                surface.blit(self.fallback, (0, 0))
+            else:
+                surface.fill((0, 0, 0))
             try:
-                f=pygame.font.SysFont('consolas',20,bold=True)
-                msg=self.error or 'MP4 chua san sang'
-                img=f.render(msg,True,(255,255,255)); bg=pygame.Surface((img.get_width()+24,img.get_height()+16),pygame.SRCALPHA); bg.fill((0,0,0,170))
-                surface.blit(bg,(20,20)); surface.blit(img,(32,28))
-            except Exception: pass
+                f = pygame.font.SysFont('consolas', 20, bold=True)
+                msg = self.error or 'MP4 chua san sang'
+                img = f.render(msg, True, (255, 255, 255))
+                bg = pygame.Surface((img.get_width() + 24, img.get_height() + 16), pygame.SRCALPHA)
+                bg.fill((0, 0, 0, 170))
+                surface.blit(bg, (20, 20))
+                surface.blit(img, (32, 28))
+            except Exception:
+                pass
             return
-        now=pygame.time.get_ticks()
-        if self.frame is None or now-self.last_tick >= int(1000/max(1,self.fps)):
-            ok, frame=self.cap.read()
+        now = pygame.time.get_ticks()
+        if self.frame is None or now - self.last_tick >= int(1000 / max(1, self.fps)):
+            ok, frame = self.cap.read()
             if not ok:
-                self.reset(); ok, frame=self.cap.read()
+                self.reset()
+                ok, frame = self.cap.read()
             if ok:
-                frame=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame=cv2.resize(frame,self.size)
-                self.frame=pygame.image.frombuffer(frame.tobytes(),self.size,'RGB').convert()
-            self.last_tick=now
-        if self.frame: surface.blit(self.frame,(0,0))
-        elif self.fallback: surface.blit(self.fallback,(0,0))
-        else: surface.fill((0,0,0))
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = cv2.resize(frame, self.size)
+                self.frame = pygame.image.frombuffer(frame.tobytes(), self.size, 'RGB').convert()
+            self.last_tick = now
+        if self.frame:
+            surface.blit(self.frame, (0, 0))
+        elif self.fallback:
+            surface.blit(self.fallback, (0, 0))
+        else:
+            surface.fill((0, 0, 0))
 
 QUESTION_BANK={1: [('Số liền sau của số 9 là số nào?', ['8', '10', '7', '11'], 1, 'Số liền sau của 9 là 10.'), ("Từ nào dưới đây có tiếng chứa âm 'ch'?", ['Con cá', 'Cái chổi', 'Viên phấn', 'Quả bóng'], 1, "Từ 'chổi' có âm đầu là 'ch'."), ('Phép tính nào dưới đây có kết quả nhỏ nhất?', ['2 + 3', '5 - 1', '6 - 4', '1 + 2'], 2, '6 - 4 = 2 là nhỏ nhất.'), ('Điền vần: Che chở cho con, đó là tình m____.', ['ẹ', 'a', 'u', 'ơ'], 0, "Ghép vần 'ẹ' được từ mẹ."), ('Bộ phận nào giúp em nghe thấy tiếng nhạc?', ['Mắt', 'Mũi', 'Tai', 'Tay'], 2, 'Tai giúp nghe âm thanh.'), ('Hình nào có 3 cạnh?', ['Hình vuông', 'Hình tròn', 'Hình tam giác', 'Hình chữ nhật'], 2, 'Hình tam giác có 3 cạnh.'), ('Khi gặp thầy cô giáo, em nên làm gì?', ['Đi thẳng', 'Khoanh tay chào lễ phép', 'Chạy trốn', 'Chỉ tay nói to'], 1, 'Chào lễ phép thể hiện kính trọng.'), ('Từ nào viết đúng chính tả?', ['Gà trống', 'Gà giống', 'Gà rống', 'Gà chông'], 0, 'Viết đúng là gà trống.'), ('AB dài 4cm, BC dài 5cm. Cả hai dài bao nhiêu?', ['8cm', '9cm', '10cm', '1cm'], 1, '4 + 5 = 9cm.'), ('Đâu là con vật nuôi quen thuộc?', ['Con hổ', 'Con sư tử', 'Con mèo', 'Con gấu'], 2, 'Con mèo là vật nuôi quen thuộc.')], 2: [('Tìm x, biết x - 15 = 20.', ['x = 5', 'x = 35', 'x = 25', 'x = 15'], 1, 'x = 20 + 15 = 35.'), ('Từ nào chỉ hoạt động của học sinh?', ['Đọc sách', 'Sách giáo khoa', 'Trường học', 'Chăm chỉ'], 0, 'Đọc sách là hoạt động.'), ('Một ngày có bao nhiêu giờ?', ['12 giờ', '24 giờ', '60 giờ', '48 giờ'], 1, 'Một ngày có 24 giờ.'), ('Cơ quan nào giúp chúng ta thở?', ['Tim', 'Dạ dày', 'Phổi', 'Não'], 2, 'Phổi giúp cơ thể thở.'), ('Từ nào trái nghĩa với khen ngợi?', ['Chê bai', 'Yêu mến', 'Tuyên dương', 'Thưởng'], 0, 'Trái nghĩa là chê bai.'), ('Kết quả của 5 × 4 + 10 là:', ['20', '30', '40', '14'], 1, '5×4=20, 20+10=30.'), ('Từ nào chỉ màu xanh da trời?', ['Red', 'Green', 'Yellow', 'Blue'], 3, 'Blue là xanh dương.'), ('Làm đổ hộp bút của bạn, em cần làm gì?', ['Bỏ chạy', 'Nhặt giúp và xin lỗi', 'Đổ lỗi', 'Cười lớn'], 1, 'Cần nhặt giúp và xin lỗi.'), ('Số lớn nhất có hai chữ số là?', ['10', '90', '99', '100'], 2, 'Số lớn nhất có hai chữ số là 99.'), ('Cây hấp thụ nước chủ yếu bằng bộ phận nào?', ['Lá', 'Hoa', 'Thân', 'Rễ'], 3, 'Rễ hút nước và dinh dưỡng.')], 3: [('Số gồm 3 nghìn, 5 trăm và 2 đơn vị là:', ['352', '3520', '3502', '3052'], 2, 'Viết là 3502.'), ("Bộ phận trả lời 'Để làm gì?' trong câu: Em chăm học để bố mẹ vui lòng.", ['Em chăm học', 'để bố mẹ vui lòng', 'bố mẹ vui lòng', 'học để bố mẹ vui lòng'], 1, 'Đó là bộ phận chỉ mục đích.'), ('HCN dài 8cm, rộng 5cm. Diện tích là:', ['40 cm²', '26cm', '13 cm²', '40cm'], 0, '8×5=40 cm².'), ('Trái Đất quay quanh Mặt Trời mất bao lâu?', ['1 ngày', '1 tháng', '1 năm', '1 tuần'], 2, 'Khoảng 1 năm.'), ('Từ nào chỉ người làm việc trí thức?', ['Bác sĩ', 'Công nhân', 'Thợ may', 'Nông dân'], 0, 'Bác sĩ là lao động trí thức.'), ('84 : 4 bằng bao nhiêu?', ['20', '21', '22', '12'], 1, '84:4=21.'), ('Xóa ký tự trước con trỏ dùng phím nào?', ['Enter', 'Caps Lock', 'Backspace', 'Delete'], 2, 'Backspace xóa bên trái con trỏ.'), ('How _____ is she?', ['many', 'old', 'much', 'long'], 1, 'Hỏi tuổi dùng How old.'), ('Số chia là 6, số dư lớn nhất là:', ['6', '7', '5', '1'], 2, 'Số dư nhỏ hơn số chia, lớn nhất là 5.'), ('Nhạc cụ phát âm thanh bằng cách gảy dây?', ['Đàn sáo', 'Đàn tranh', 'Kèn Trumpet', 'Trống'], 1, 'Đàn tranh dùng dây đàn.')], 4: [('Giá trị chữ số 7 trong 475.210 là:', ['700', '7.000', '70.000', '700.000'], 2, '7 ở hàng chục nghìn.'), ("Chủ ngữ trong câu 'Đoàn thuyền đánh cá buồm căng gió ra khơi.' là:", ['Đoàn thuyền', 'Đoàn thuyền đánh cá', 'Buồm căng gió', 'Đoàn thuyền đánh cá buồm căng gió'], 1, 'Chủ ngữ là Đoàn thuyền đánh cá.'), ('Phân số nào bằng 2/3?', ['4/9', '6/9', '6/8', '2/6'], 1, '6/9 rút gọn được 2/3.'), ('Nước đóng băng ở nhiệt độ nào?', ['100°C', '37°C', '10°C', '0°C'], 3, 'Nước đóng băng ở 0°C.'), ('Ai lấy thân mình lấp lỗ châu mai?', ['Phan Đình Giót', 'Bế Văn Đàn', 'Tô Vĩnh Diện', 'Kim Đồng'], 0, 'Đó là Phan Đình Giót.'), ('Đồng bằng lớn nhất nước ta là:', ['Đồng bằng Bắc Bộ', 'Đồng bằng Nam Bộ', 'Duyên hải miền Trung', 'Sông Hồng'], 1, 'Đồng bằng Nam Bộ lớn nhất.'), ('Lớp 35 HS, nữ bằng 3/5. Có bao nhiêu nam?', ['21', '14', '15', '20'], 1, 'Nữ 21, nam 14.'), ('Từ nào là từ láy?', ['Mặt mũi', 'Long lanh', 'Sách vở', 'Tươi tốt'], 1, 'Long lanh là từ láy.'), ('Thực vật tự tổng hợp dinh dưỡng nhờ quá trình nào?', ['Hô hấp', 'Thoát hơi nước', 'Quang hợp', 'Hút nước'], 2, 'Quang hợp giúp cây tạo dinh dưỡng.'), ('Yesterday, my family _____ to the zoo.', ['go', 'goes', 'went', 'going'], 2, 'Yesterday dùng quá khứ: went.')], 5: [("Số thập phân 'Không đơn vị, hai mươi lăm phần trăm' là:", ['0,25', '0,025', '25,0', '0,205'], 0, 'Viết là 0,25.'), ('Vì... nên... biểu thị quan hệ gì?', ['Giả thiết - Kết quả', 'Nguyên nhân - Kết quả', 'Tương phản', 'Tăng tiến'], 1, 'Đó là quan hệ nguyên nhân - kết quả.'), ('Diện tích hình tròn bán kính 2cm là:', ['6,28 cm²', '12,56 cm²', '12,56 cm', '3,14 cm²'], 1, 'S=2×2×3,14=12,56.'), ('Chất nào tồn tại ở cả 3 thể?', ['Sắt', 'Không khí', 'Nước', 'Thủy ngân'], 2, 'Nước có rắn, lỏng, khí.'), ('Ngày Quốc khánh Việt Nam là:', ['30/4', '19/8', '2/9', '22/12'], 2, 'Quốc khánh là 2/9.'), ('Đất liền Việt Nam nằm trên bán đảo nào?', ['Đông Dương', 'Triều Tiên', 'Mã Lai', 'Ả Rập'], 0, 'Việt Nam nằm trên bán đảo Đông Dương.'), ('Ô tô đi 50 km/giờ trong 2,5 giờ. Quãng đường là:', ['125 km', '20 km', '100 km', '12,5 km'], 0, '50×2,5=125 km.'), ('Thành ngữ nào nói về dũng cảm?', ['Kề vai sát cánh', 'Vào sinh ra tử', 'Uống nước nhớ nguồn', 'Nhường cơm sẻ áo'], 1, 'Vào sinh ra tử chỉ sự dũng cảm.'), ('Nguồn năng lượng sạch và vô tận là:', ['Than đá', 'Dầu mỏ', 'Năng lượng mặt trời', 'Khí đốt'], 2, 'Năng lượng mặt trời là sạch và vô chậm.'), ('She is the _____ student in my class.', ['good', 'better', 'best', 'well'], 2, 'So sanh nhat cua good la best.')]}
 
@@ -275,10 +378,6 @@ class Boss(Enemy):
 
 class Game:
     def __init__(self):
-        # Thiết lập dummy driver khi deploy trên máy chủ không có giao diện hiển thị màn hình (như Vercel)
-        if os.environ.get("SDL_VIDEODRIVER") is None and os.environ.get("VERCEL") == "1":
-            os.environ["SDL_VIDEODRIVER"] = "dummy"
-            
         pygame.init(); self.audio=Audio(); info=pygame.display.Info(); self.display=pygame.display.set_mode((WIDTH,HEIGHT),pygame.RESIZABLE); self.screen=pygame.Surface((WIDTH,HEIGHT)).convert_alpha(); pygame.display.set_caption(TITLE); self.clock=pygame.time.Clock(); self.f=get_font(28); self.big=get_font(58); self.small=get_font(18); self.state='opening'; self.idx=0; self.grade=None; self.full=False; self.question_attempts=0; self.question_feedback=None; self.question_locked=False; self.question_result_until=0; self.mana=MAX_MANA; self.mana_regen_tick=0; self.mana_flash=0; self.skill_msg=''; self.skill_msg_time=0; self.cooldowns={'Q':0,'E':0,'R':0,'T':0}; self.shield_time=0; self.dash_inv_time=0; self.skill_waves=[]; self.star_bursts=[]; self.dash_trails=[]; self.load_assets(); self.load_levels(); self.audio.load(); self.audio.play_music('opening')
     def load_assets(self):
         self.opening_img=load_image('assets/scenes/opening.png',(WIDTH,HEIGHT),True)
@@ -291,7 +390,9 @@ class Game:
         }
         self.hfull=load_image('assets/ui/heart_full.png',(42,42)); self.hempty=load_image('assets/ui/heart_empty.png',(42,42)); self.coin_img=load_image('assets/items/coin.png',(34,34)); self.pimgs={'r':load_image('assets/player/right.png',(56,62),True),'l':load_image('assets/player/left.png',(56,62),True),'ar':load_image('assets/player/attack_right.png',(78,62),True),'al':load_image('assets/player/attack_left.png',(78,62),True)}; fs={'slime':'enemy_1_slime.png','hedgehog':'enemy_2_hedgehog.png','scorpion':'enemy_3_scorpion.png','frog':'enemy_4_frog.png','snowman':'enemy_5_snowman.png','fire_imp':'enemy_6_fire_imp.png','guard':'enemy_7_guard.png','robot_guard':'enemy_8_robot_guard.png','alien':'enemy_9_alien.png'}; self.eimgs={k:load_image('assets/enemies/'+v,(54,54)) for k,v in fs.items()}; self.boss_img=load_image('assets/boss/dragon.png',(240,190),True); self.shield_effect=load_image('assets/ui/skills/skill_shield.png',(70,70),True); self.skill_icons={'Q':load_image('assets/ui/skills/skill_wave.png',(48,48),True),'E':load_image('assets/ui/skills/skill_shield.png',(48,48),True),'R':load_image('assets/ui/skills/skill_dash.png',(48,48),True),'T':load_image('assets/ui/skills/skill_storm.png',(48,48),True)}
     def load_levels(self):
-        self.levels=json.load(open(path('data/levels.json'),encoding='utf-8'))['levels']; self.bgs=[load_image(l['background'],(WIDTH,HEIGHT),True) for l in self.levels]; self.load_level(0)
+        with open(path('data/levels.json'), encoding='utf-8') as f:
+            self.levels=json.load(f)['levels']
+        self.bgs=[load_image(l['background'],(WIDTH,HEIGHT),True) for l in self.levels]; self.load_level(0)
     def load_level(self,i):
         self.idx=i; self.lvl=self.levels[i]; self.lvl['player_start']=[self.lvl['spawn'][0]+20,self.lvl['spawn'][1]-58]; self.player=Player(self.pimgs,self.lvl['player_start']); self.coins=[{'rect':pygame.Rect(c[0],c[1],34,34),'got':False} for c in self.lvl['coins']]; self.enemies=[Enemy(e,self.eimgs.get(e['type'],self.eimgs['slime'])) for e in self.lvl['enemies']]; self.boss=Boss(self.lvl['boss'],self.boss_img) if self.lvl.get('boss') else None; self.collected=0; self.start_ticks=pygame.time.get_ticks(); self.mana=MAX_MANA; self.mana_regen_tick=0; self.cooldowns={'Q':0,'E':0,'R':0,'T':0}; self.shield_time=0; self.dash_inv_time=0; self.skill_waves=[]; self.star_bursts=[]; self.dash_trails=[]; self.audio.play_music(i+1)
     def present(self): self.display.blit(pygame.transform.smoothscale(self.screen,self.display.get_size()),(0,0)); pygame.display.flip()
@@ -497,7 +598,7 @@ class Game:
             else: msg=''
             if msg: draw_outline_text(self.screen,get_font(36),msg,(255,255,255),(WIDTH//2,610),outline=(0,0,0),width=1,center=True)
     def overlay_text(self,title,msg,color):
-        ov=pygame.Surface((WIDTH,HEIGHT),pygame.SRCALPHA); ov.fill((0,0,0,90)); self.screen.blit(ov,(0,0)); t=self.big.render(title,True,color); sh=self.big.render(title,True=(0,0,0)); self.screen.blit(sh,sh.get_rect(center=(WIDTH//2+4,285+4))); self.screen.blit(t,t.get_rect(center=(WIDTH//2,285))); m=self.f.render(msg,True,(255,255,255)); self.screen.blit(m,m.get_rect(center=(WIDTH//2,360)))
+        ov=pygame.Surface((WIDTH,HEIGHT),pygame.SRCALPHA); ov.fill((0,0,0,90)); self.screen.blit(ov,(0,0)); t=self.big.render(title,True,color); sh=self.big.render(title,True,(0,0,0)); self.screen.blit(sh,sh.get_rect(center=(WIDTH//2+4,285+4))); self.screen.blit(t,t.get_rect(center=(WIDTH//2,285))); m=self.f.render(msg,True,(255,255,255)); self.screen.blit(m,m.get_rect(center=(WIDTH//2,360)))
     def draw_scene(self,name):
         vp=self.videos.get(name)
         if vp: vp.draw(self.screen)
@@ -540,9 +641,1088 @@ class Game:
             elif self.state=='ending_wait': self.draw_ending_wait()
             self.present(); self.clock.tick(FPS)
 
-# Khai báo các thực thể và handler cấp cao phục vụ Vercel Web Functions Runtime 
-app = Game()
-handler = app.run
+
+# ==============================================================================
+# VERCEL PYTHON WEB RUNTIME (WSGI ENTRYPOINT + HTML5 CANVAS PORT)
+# ==============================================================================
+def build_web_config():
+    with open(path('data/levels.json'), encoding='utf-8') as f:
+        levels_data = json.load(f)['levels']
+    for lvl in levels_data:
+        lvl['background'] = '/' + (resolve_rel(lvl['background']) or lvl['background'])
+    music_files = {k: '/' + (resolve_rel(v) or v) for k, v in MUSIC_FILES.items()}
+    level_music = {str(k): '/' + (resolve_rel(v) or v) for k, v in LEVEL_MUSIC.items()}
+    sound_files = {k: '/' + (resolve_rel(v) or v) for k, v in SOUND_FILES.items()}
+    questions = {
+        str(grade): [
+            {'q': item[0], 'opts': item[1], 'ans': item[2], 'exp': item[3]}
+            for item in qlist
+        ]
+        for grade, qlist in QUESTION_BANK.items()
+    }
+    return {
+        'settings': {
+            'WIDTH': WIDTH, 'HEIGHT': HEIGHT, 'FPS': FPS, 'TITLE': TITLE,
+            'GRAVITY': GRAVITY, 'PLAYER_SPEED': PLAYER_SPEED,
+            'JUMP_POWER': JUMP_POWER, 'DOUBLE_JUMP_POWER': DOUBLE_JUMP_POWER,
+            'MAX_FALL_SPEED': MAX_FALL_SPEED, 'MAX_HEALTH': MAX_HEALTH,
+            'ATTACK_TIME': ATTACK_TIME, 'INVINCIBLE_TIME': INVINCIBLE_TIME,
+            'DAMAGE_ZONE_COOLDOWN': DAMAGE_ZONE_COOLDOWN,
+            'MAX_MANA': MAX_MANA, 'MANA_REGEN_AMOUNT': MANA_REGEN_AMOUNT,
+            'MANA_REGEN_FRAMES': MANA_REGEN_FRAMES, 'MANA_PER_COIN': MANA_PER_COIN,
+            'SKILL_WAVE_COST': SKILL_WAVE_COST, 'SKILL_WAVE_COOLDOWN': SKILL_WAVE_COOLDOWN,
+            'SKILL_WAVE_RANGE': SKILL_WAVE_RANGE, 'SKILL_WAVE_DAMAGE': SKILL_WAVE_DAMAGE,
+            'SKILL_SHIELD_COST': SKILL_SHIELD_COST, 'SKILL_SHIELD_COOLDOWN': SKILL_SHIELD_COOLDOWN,
+            'SKILL_SHIELD_TIME': SKILL_SHIELD_TIME,
+            'SKILL_DASH_COST': SKILL_DASH_COST, 'SKILL_DASH_COOLDOWN': SKILL_DASH_COOLDOWN,
+            'SKILL_DASH_DISTANCE': SKILL_DASH_DISTANCE, 'SKILL_DASH_DAMAGE': SKILL_DASH_DAMAGE,
+            'SKILL_DASH_INVINCIBLE': SKILL_DASH_INVINCIBLE,
+            'SKILL_STORM_COST': SKILL_STORM_COST, 'SKILL_STORM_COOLDOWN': SKILL_STORM_COOLDOWN,
+            'SKILL_STORM_DAMAGE': SKILL_STORM_DAMAGE, 'SKILL_STORM_BOSS_DAMAGE': SKILL_STORM_BOSS_DAMAGE,
+            'QUESTION_CORRECT_DELAY_MS': QUESTION_CORRECT_DELAY_MS,
+        },
+        'music_files': music_files,
+        'level_music': level_music,
+        'sound_files': sound_files,
+        'levels': levels_data,
+        'questions': questions,
+    }
+
+WEB_HTML = """<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Badge Journey - Hành Trình Huy Hiệu Cổ Đại</title>
+<link rel="icon" href="/game_icon.ico" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body {
+    background: radial-gradient(circle at center, #161d2f 0%, #090c14 100%);
+    color: #fff;
+    font-family: Consolas, "Courier New", monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  #game-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75);
+    border: 2px solid rgba(245, 190, 75, 0.45);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+  }
+  canvas {
+    display: block;
+    max-width: 100vw;
+    max-height: 92vh;
+    width: auto;
+    height: auto;
+    aspect-ratio: 1152 / 768;
+    background: #000;
+  }
+  #hud-bar {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #cbd5e1;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #hud-bar span b { color: #fde047; }
+</style>
+</head>
+<body>
+  <div id="game-wrap">
+    <canvas id="gameCanvas" width="1152" height="768"></canvas>
+  </div>
+  <div id="hud-bar">
+    <span><b>A/D, ←/→</b>: Di chuyển</span>
+    <span><b>W/↑/Space</b>: Nhảy (x2)</span>
+    <span><b>Tab/F</b>: Chém</span>
+    <span><b>Q/E/R/T</b>: Kỹ năng</span>
+    <span><b>F9/F10</b>: Tạm dừng/Tiếp tục</span>
+    <span><b>8/9</b>: Nhạc/Âm thanh</span>
+    <span><b>Enter</b>: Tiếp tục</span>
+  </div>
+<script>
+(async function() {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const res = await fetch('/api/config');
+  const DATA = await res.json();
+  const S = DATA.settings;
+  const WIDTH = S.WIDTH, HEIGHT = S.HEIGHT, FPS = S.FPS;
+
+  function loadImg(src) {
+    const img = new Image();
+    img.src = src;
+    return img;
+  }
+
+  function loadVid(src) {
+    const v = document.createElement('video');
+    v.src = src;
+    v.muted = true;
+    v.loop = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    v.play().catch(() => {});
+    return v;
+  }
+
+  const assets = {
+    openingImg: loadImg('/assets/scenes/opening.png'),
+    tutorialImg: loadImg('/assets/scenes/tutorial.png'),
+    endingImg: loadImg('/assets/scenes/ending.png'),
+    videos: {
+      opening: loadVid('/assets/scenes/opening.mp4'),
+      tutorial: loadVid('/assets/scenes/tutorial.mp4'),
+      ending: loadVid('/assets/scenes/ending.mp4')
+    },
+    hfull: loadImg('/assets/ui/heart_full.png'),
+    hempty: loadImg('/assets/ui/heart_empty.png'),
+    coin: loadImg('/assets/items/coin.png'),
+    player: {
+      r: loadImg('/assets/player/right.png'),
+      l: loadImg('/assets/player/left.png'),
+      ar: loadImg('/assets/player/attack_right.png'),
+      al: loadImg('/assets/player/attack_left.png')
+    },
+    enemies: {
+      slime: loadImg('/assets/enemies/enemy_1_slime.png'),
+      hedgehog: loadImg('/assets/enemies/enemy_2_hedgehog.png'),
+      scorpion: loadImg('/assets/enemies/enemy_3_scorpion.png'),
+      frog: loadImg('/assets/enemies/enemy_4_frog.png'),
+      snowman: loadImg('/assets/enemies/enemy_5_snowman.png'),
+      fire_imp: loadImg('/assets/enemies/enemy_6_fire_imp.png'),
+      guard: loadImg('/assets/enemies/enemy_7_guard.png'),
+      robot_guard: loadImg('/assets/enemies/enemy_8_robot_guard.png'),
+      alien: loadImg('/assets/enemies/enemy_9_alien.png')
+    },
+    boss: loadImg('/assets/boss/dragon.png'),
+    shield: loadImg('/assets/ui/skills/skill_shield.png'),
+    skills: {
+      Q: loadImg('/assets/ui/skills/skill_wave.png'),
+      E: loadImg('/assets/ui/skills/skill_shield.png'),
+      R: loadImg('/assets/ui/skills/skill_dash.png'),
+      T: loadImg('/assets/ui/skills/skill_storm.png')
+    },
+    bgs: DATA.levels.map(l => loadImg(l.background))
+  };
+
+  class WebAudio {
+    constructor() {
+      this.musicEnabled = true;
+      this.soundEnabled = true;
+      this.currentTrack = null;
+      this.bgm = new Audio();
+      this.bgm.loop = true;
+      this.sounds = {};
+      for (const [k, url] of Object.entries(DATA.sound_files)) {
+        this.sounds[k] = url;
+      }
+    }
+    playMusic(name) {
+      const rel = (typeof name === 'number') ? DATA.level_music[String(name)] : DATA.music_files[name];
+      if (!rel) return;
+      if (this.currentTrack === rel && !this.bgm.paused) return;
+      this.currentTrack = rel;
+      this.bgm.src = rel;
+      if (this.musicEnabled) {
+        this.bgm.play().catch(() => {});
+      }
+    }
+    toggleMusic() {
+      this.musicEnabled = !this.musicEnabled;
+      if (!this.musicEnabled) this.bgm.pause();
+      else if (this.currentTrack) this.bgm.play().catch(() => {});
+    }
+    toggleSound() {
+      this.soundEnabled = !this.soundEnabled;
+    }
+    sound(k) {
+      if (!this.soundEnabled || !this.sounds[k]) return;
+      const a = new Audio(this.sounds[k]);
+      a.play().catch(() => {});
+    }
+  }
+
+  const audio = new WebAudio();
+  const keys = {};
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  function toRect(arr) {
+    return { x: arr[0], y: arr[1], w: arr[2], h: arr[3] };
+  }
+
+  function drawOutlineText(text, size, color, x, y, outline = '#000', width = 2, center = false) {
+    ctx.save();
+    ctx.font = `bold ${size}px Consolas, monospace`;
+    ctx.textAlign = center ? 'center' : 'left';
+    ctx.textBaseline = center ? 'middle' : 'top';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = width * 2;
+    ctx.strokeStyle = outline;
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  function wrapLines(text, size, maxWidth) {
+    ctx.save();
+    ctx.font = `bold ${size}px Consolas, monospace`;
+    const words = String(text).split(' ');
+    const lines = [];
+    let current = '';
+    for (const word of words) {
+      const test = current ? current + ' ' + word : word;
+      if (ctx.measureText(test).width <= maxWidth) {
+        current = test;
+      } else {
+        if (current) lines.push(current);
+        current = word;
+      }
+    }
+    if (current) lines.push(current);
+    ctx.restore();
+    return lines;
+  }
+
+  function drawWrappedText(text, size, color, x, y, maxWidth, lineGap = 6, center = false) {
+    const lines = wrapLines(text, size, maxWidth);
+    ctx.save();
+    ctx.font = `bold ${size}px Consolas, monospace`;
+    ctx.fillStyle = color;
+    ctx.textBaseline = 'top';
+    for (const line of lines) {
+      if (center) {
+        ctx.textAlign = 'center';
+        ctx.fillText(line, x + maxWidth / 2, y);
+      } else {
+        ctx.textAlign = 'left';
+        ctx.fillText(line, x, y);
+      }
+      y += size + lineGap;
+    }
+    ctx.restore();
+    return y;
+  }
+
+  function drawWaveArc(cx, cy, facing, alpha = 1.0, scale = 1.0) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(facing * scale, scale);
+    ctx.globalAlpha = alpha;
+    const arcs = [
+      { r: 44, w: 11, c: 'rgba(255,255,235,0.95)' },
+      { r: 36, w: 7,  c: 'rgba(255,190,45,0.95)' },
+      { r: 28, w: 4,  c: 'rgba(255,115,25,0.95)' }
+    ];
+    for (const a of arcs) {
+      ctx.beginPath();
+      ctx.arc(-8, 0, a.r, -1.25, 1.25);
+      ctx.strokeStyle = a.c;
+      ctx.lineWidth = a.w;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  class Player {
+    constructor(start) {
+      this.rect = { x: start[0], y: start[1], w: 46, h: 55 };
+      this.x = start[0];
+      this.y = start[1];
+      this.vx = 0;
+      this.vy = 0;
+      this.facing = 1;
+      this.onGround = false;
+      this.jumps = 2;
+      this.health = S.MAX_HEALTH;
+      this.attack = 0;
+      this.inv = 0;
+      this.dmgCd = 0;
+      this.dead = false;
+    }
+    hurt(n = 1, force = false) {
+      if (!force && (this.inv > 0 || this.dead)) return false;
+      this.health -= n;
+      if (!force) this.inv = S.INVINCIBLE_TIME;
+      if (this.health <= 0) { this.health = 0; this.dead = true; }
+      return true;
+    }
+    jump() {
+      if (this.jumps > 0) {
+        this.vy = (this.jumps === 1) ? S.DOUBLE_JUMP_POWER : S.JUMP_POWER;
+        this.jumps -= 1;
+        this.onGround = false;
+      }
+    }
+    attackNow() { this.attack = S.ATTACK_TIME; }
+    attackRect() {
+      if (this.attack <= 0) return { x: 0, y: 0, w: 0, h: 0 };
+      return this.facing === 1
+        ? { x: this.rect.x + this.rect.w - 4, y: this.rect.y - 16, w: 64, h: 88 }
+        : { x: this.rect.x - 60, y: this.rect.y - 16, w: 64, h: 88 };
+    }
+    update(plats, spawn) {
+      this.vx = 0;
+      if (keys['KeyA'] || keys['ArrowLeft']) { this.vx = -S.PLAYER_SPEED; this.facing = -1; }
+      if (keys['KeyD'] || keys['ArrowRight']) { this.vx = S.PLAYER_SPEED; this.facing = 1; }
+      this.x += this.vx;
+      this.rect.x = Math.round(this.x);
+      const oldBottom = this.rect.y + this.rect.h;
+      this.vy = Math.min(this.vy + S.GRAVITY, S.MAX_FALL_SPEED);
+      this.y += this.vy;
+      this.rect.y = Math.round(this.y);
+      this.onGround = false;
+      if (this.vy >= 0) {
+        const allPlats = [...plats, spawn];
+        for (const p of allPlats) {
+          const r = toRect(p);
+          if (rectsOverlap(this.rect, r) && oldBottom <= r.y + 10) {
+            this.rect.y = r.y - this.rect.h;
+            this.y = this.rect.y;
+            this.vy = 0;
+            this.jumps = 2;
+            this.onGround = true;
+            break;
+          }
+        }
+      }
+      if (this.attack > 0) this.attack -= 1;
+      if (this.inv > 0) this.inv -= 1;
+      if (this.dmgCd > 0) this.dmgCd -= 1;
+      this.rect.x = Math.max(-20, Math.min(WIDTH - 25, this.rect.x));
+      this.x = this.rect.x;
+    }
+    draw() {
+      if (this.inv > 0 && Math.floor(this.inv / 5) % 2 === 0) return;
+      const key = (this.facing === 1 && this.attack > 0) ? 'ar'
+                : (this.attack > 0) ? 'al'
+                : (this.facing === 1) ? 'r' : 'l';
+      const img = assets.player[key];
+      const w = (key === 'ar' || key === 'al') ? 78 : 56;
+      const h = 62;
+      if (img && img.complete) {
+        ctx.drawImage(img, this.rect.x + this.rect.w / 2 - w / 2, this.rect.y + this.rect.h - h, w, h);
+      }
+      if (this.attack > 0) {
+        const cx = this.facing === 1 ? this.rect.x + this.rect.w + 26 : this.rect.x - 26;
+        const cy = this.rect.y + this.rect.h / 2;
+        drawWaveArc(cx, cy, this.facing, 0.92, 1.0);
+      }
+    }
+  }
+
+  const game = {
+    state: 'opening',
+    idx: 0,
+    grade: 1,
+    questionAttempts: 0,
+    questionFeedback: null,
+    questionLocked: false,
+    questionResultUntil: 0,
+    mana: S.MAX_MANA,
+    manaRegenTick: 0,
+    manaFlash: 0,
+    skillMsg: '',
+    skillMsgTime: 0,
+    cooldowns: { Q: 0, E: 0, R: 0, T: 0 },
+    shieldTime: 0,
+    dashInvTime: 0,
+    skillWaves: [],
+    starBursts: [],
+    dashTrails: [],
+    startTicks: performance.now(),
+    loadLevel(i) {
+      this.idx = i;
+      this.lvl = JSON.parse(JSON.stringify(DATA.levels[i]));
+      const start = [this.lvl.spawn[0] + 20, this.lvl.spawn[1] - 58];
+      this.player = new Player(start);
+      this.coins = this.lvl.coins.map(c => ({ rect: { x: c[0], y: c[1], w: 34, h: 34 }, got: false }));
+      let eid = 1;
+      this.enemies = this.lvl.enemies.map(e => ({
+        id: eid++,
+        type: e.type,
+        rect: { x: e.x, y: e.y, w: 46, h: 46 },
+        x: e.x,
+        left: e.patrol_left ?? (e.x - 80),
+        right: Math.max(e.patrol_right ?? (e.x + 80), (e.patrol_left ?? (e.x - 80)) + 80),
+        speed: e.speed ?? 1.2,
+        dir: 1,
+        hp: e.hp ?? 3,
+        maxHp: e.hp ?? 3,
+        hit: 0
+      }));
+      if (this.lvl.boss) {
+        const b = this.lvl.boss;
+        this.boss = {
+          id: 9999,
+          rect: { x: b.x, y: b.y, w: 210, h: 150 },
+          x: b.x,
+          left: b.patrol_left ?? (b.x - 80),
+          right: Math.max(b.patrol_right ?? (b.x + 80), (b.patrol_left ?? (b.x - 80)) + 80),
+          speed: b.speed ?? 1.0,
+          dir: 1,
+          hp: b.hp ?? 30,
+          maxHp: b.hp ?? 30,
+          hit: 0,
+          fire: 0
+        };
+      } else {
+        this.boss = null;
+      }
+      this.collected = 0;
+      this.startTicks = performance.now();
+      this.mana = S.MAX_MANA;
+      this.manaRegenTick = 0;
+      this.cooldowns = { Q: 0, E: 0, R: 0, T: 0 };
+      this.shieldTime = 0;
+      this.dashInvTime = 0;
+      this.skillWaves = [];
+      this.starBursts = [];
+      this.dashTrails = [];
+      audio.playMusic(i + 1);
+    },
+    currentQuestion() {
+      return DATA.questions[String(this.grade)][this.idx];
+    },
+    startQuestion() {
+      this.state = 'question';
+      this.questionAttempts = 0;
+      this.questionFeedback = null;
+      this.questionLocked = false;
+      this.questionResultUntil = 0;
+      audio.playMusic('question');
+    },
+    answerQuestion(selected) {
+      if (this.questionLocked || selected === null) return;
+      const q = this.currentQuestion();
+      const ok = selected === q.ans;
+      this.questionFeedback = [selected, ok];
+      if (ok) {
+        audio.sound('victory');
+        this.questionLocked = true;
+        this.questionResultUntil = performance.now() + S.QUESTION_CORRECT_DELAY_MS;
+      } else {
+        this.questionAttempts += 1;
+        if (this.questionAttempts >= 2) {
+          this.state = 'game_over';
+          audio.playMusic('game_over');
+        }
+      }
+    },
+    spendMana(cost, key) {
+      if (this.cooldowns[key] > 0) {
+        this.skillMsg = `ĐANG HỒI CHIÊU: ${(this.cooldowns[key] / FPS).toFixed(1)} GIÂY`;
+        this.skillMsgTime = 75;
+        audio.sound('skill_cooldown');
+        return false;
+      }
+      if (this.mana < cost) {
+        this.manaFlash = 35;
+        this.skillMsg = 'KHÔNG ĐỦ MANA!';
+        this.skillMsgTime = 75;
+        audio.sound('no_mana');
+        return false;
+      }
+      this.mana -= cost;
+      return true;
+    },
+    hurtPlayer(n = 1, force = false) {
+      if (this.dashInvTime > 0 && !force) return false;
+      if (this.shieldTime > 0 && !force) {
+        this.shieldTime = 0;
+        this.player.inv = Math.max(this.player.inv, 45);
+        this.player.vy = -5;
+        this.skillMsg = 'KHIÊN ĐÃ VỠ - ĐÃ CHẶN SÁT THƯƠNG!';
+        this.skillMsgTime = 65;
+        audio.sound('shield_break');
+        return false;
+      }
+      return this.player.hurt(n, force);
+    },
+    useSkill(key) {
+      if (key === 'Q' && this.spendMana(S.SKILL_WAVE_COST, key)) {
+        const x = this.player.facing > 0 ? this.player.rect.x + this.player.rect.w : this.player.rect.x - 74;
+        this.skillWaves.push({
+          rect: { x, y: this.player.rect.y + this.player.rect.h / 2 - 50, w: 74, h: 100 },
+          x, d: this.player.facing, travel: 0, hitIds: new Set(), alive: true
+        });
+        this.cooldowns.Q = S.SKILL_WAVE_COOLDOWN;
+        audio.sound('skill_wave');
+      } else if (key === 'E' && this.spendMana(S.SKILL_SHIELD_COST, key)) {
+        this.shieldTime = S.SKILL_SHIELD_TIME;
+        this.cooldowns.E = S.SKILL_SHIELD_COOLDOWN;
+        audio.sound('skill_shield');
+      } else if (key === 'R' && this.spendMana(S.SKILL_DASH_COST, key)) {
+        this.cooldowns.R = S.SKILL_DASH_COOLDOWN;
+        this.dashInvTime = S.SKILL_DASH_INVINCIBLE;
+        audio.sound('skill_dash');
+        const d = this.player.facing;
+        const hit = new Set();
+        const allPlats = [...this.lvl.platforms, this.lvl.spawn].map(toRect);
+        const deaths = this.lvl.death_zones.map(toRect);
+        for (let step = 0; step < S.SKILL_DASH_DISTANCE; step += 6) {
+          const trial = { x: this.player.rect.x + d * 6, y: this.player.rect.y, w: this.player.rect.w, h: this.player.rect.h };
+          if (allPlats.some(p => rectsOverlap(trial, p)) || deaths.some(z => rectsOverlap(trial, z))) break;
+          this.dashTrails.push([{ ...this.player.rect }, 24]);
+          this.player.rect = trial;
+          this.player.x = trial.x;
+          for (const en of this.enemies) {
+            if (en.hp > 0 && !hit.has(en.id) && rectsOverlap(trial, en.rect)) {
+              if (en.hit <= 0) { en.hp -= S.SKILL_DASH_DAMAGE; en.hit = 12; }
+              hit.add(en.id);
+            }
+          }
+          if (this.boss && this.boss.hp > 0 && !hit.has(this.boss.id) && rectsOverlap(trial, this.boss.rect)) {
+            if (this.boss.hit <= 0) { this.boss.hp -= S.SKILL_DASH_DAMAGE; this.boss.hit = 12; }
+            hit.add(this.boss.id);
+          }
+        }
+      } else if (key === 'T' && this.spendMana(S.SKILL_STORM_COST, key)) {
+        this.cooldowns.T = S.SKILL_STORM_COOLDOWN;
+        audio.sound('skill_storm');
+        const cx = this.player.rect.x + this.player.rect.w / 2 + this.player.facing * 68;
+        const cy = this.player.rect.y + this.player.rect.h / 2;
+        this.starBursts.push({
+          cx, cy, d: this.player.facing, rotation: 0, alive: true, hitIds: new Set(),
+          rect: { x: cx - 110, y: cy - 110, w: 220, h: 220 }
+        });
+      }
+    }
+  };
+
+  game.loadLevel(0);
+  game.state = 'opening';
+  audio.playMusic('opening');
+
+  window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) {
+      e.preventDefault();
+    }
+    if (e.code === 'Digit8') {
+      audio.toggleMusic();
+    } else if (e.code === 'Digit9') {
+      audio.toggleSound();
+    } else if (e.code === 'F9' && game.state === 'playing') {
+      game.state = 'paused';
+      audio.playMusic('pause');
+    } else if (e.code === 'F10' && game.state === 'paused') {
+      game.state = 'playing';
+      audio.playMusic(game.idx + 1);
+    } else if (game.state === 'opening' && (e.code === 'Enter' || e.code === 'Tab')) {
+      game.state = 'tutorial';
+      audio.playMusic('tutorial');
+    } else if (game.state === 'tutorial' && (e.code === 'Enter' || e.code === 'Tab')) {
+      game.state = 'class_select';
+      audio.playMusic('question');
+    } else if (game.state === 'class_select' && ['Digit1','Digit2','Digit3','Digit4','Digit5'].includes(e.code)) {
+      game.grade = parseInt(e.code.replace('Digit', ''), 10);
+      game.state = 'playing';
+      game.loadLevel(0);
+    } else if (game.state === 'question') {
+      const map = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, KeyA: 0, KeyB: 1, KeyC: 2, KeyD: 3 };
+      if (e.code in map) game.answerQuestion(map[e.code]);
+    } else if (game.state === 'ending' && e.code === 'Enter') {
+      game.state = 'ending_wait';
+    } else if (game.state === 'ending_wait' && e.code === 'Enter') {
+      game.state = 'opening';
+      audio.playMusic('opening');
+    } else if (game.state === 'game_over' && (e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === 'Enter')) {
+      game.state = 'playing';
+      game.loadLevel(game.idx);
+    } else if (game.state === 'victory' && e.code === 'Enter') {
+      if (game.idx >= 9) {
+        game.state = 'ending';
+        audio.playMusic('ending');
+      } else {
+        game.state = 'playing';
+        game.loadLevel(game.idx + 1);
+      }
+    } else if (game.state === 'playing') {
+      if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) game.player.jump();
+      if (['Tab', 'KeyF'].includes(e.code)) { game.player.attackNow(); audio.sound('hit'); }
+      if (e.code === 'KeyQ') game.useSkill('Q');
+      if (e.code === 'KeyE') game.useSkill('E');
+      if (e.code === 'KeyR') game.useSkill('R');
+      if (e.code === 'KeyT') game.useSkill('T');
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+  });
+
+  function updateEntity(en) {
+    en.x += en.speed * en.dir;
+    if (en.x < en.left) { en.x = en.left; en.dir = 1; }
+    if (en.x > en.right) { en.x = en.right; en.dir = -1; }
+    en.rect.x = Math.round(en.x);
+    en.hit = Math.max(0, en.hit - 1);
+  }
+
+  function bossFireRect(b) {
+    if (!(45 < b.fire && b.fire < 95)) return { x: 0, y: 0, w: 0, h: 0 };
+    return b.dir > 0
+      ? { x: b.rect.x + b.rect.w - 16, y: b.rect.y + 54, w: 150, h: 46 }
+      : { x: b.rect.x - 136, y: b.rect.y + 54, w: 150, h: 46 };
+  }
+
+  function updateGame() {
+    if (game.state === 'question' && game.questionLocked && performance.now() >= game.questionResultUntil) {
+      game.state = 'victory';
+      game.questionLocked = false;
+    }
+    if (game.state !== 'playing') return;
+
+    for (const k of ['Q', 'E', 'R', 'T']) {
+      if (game.cooldowns[k] > 0) game.cooldowns[k] -= 1;
+    }
+    if (game.shieldTime > 0) game.shieldTime -= 1;
+    if (game.dashInvTime > 0) game.dashInvTime -= 1;
+    if (game.manaFlash > 0) game.manaFlash -= 1;
+    if (game.skillMsgTime > 0) game.skillMsgTime -= 1;
+    game.manaRegenTick += 1;
+    if (game.manaRegenTick >= S.MANA_REGEN_FRAMES) {
+      game.manaRegenTick = 0;
+      game.mana = Math.min(S.MAX_MANA, game.mana + S.MANA_REGEN_AMOUNT);
+    }
+
+    for (const p of game.skillWaves) {
+      p.x += 11 * p.d;
+      p.travel += 11;
+      p.rect.x = Math.round(p.x);
+      if (p.travel >= S.SKILL_WAVE_RANGE || p.rect.x + p.rect.w < 0 || p.rect.x > WIDTH) p.alive = false;
+      for (const en of game.enemies) {
+        if (en.hp > 0 && !p.hitIds.has(en.id) && rectsOverlap(p.rect, en.rect)) {
+          if (en.hit <= 0) { en.hp -= S.SKILL_WAVE_DAMAGE; en.hit = 12; }
+          p.hitIds.add(en.id);
+        }
+      }
+      if (game.boss && game.boss.hp > 0 && !p.hitIds.has(game.boss.id) && rectsOverlap(p.rect, game.boss.rect)) {
+        if (game.boss.hit <= 0) { game.boss.hp -= 1; game.boss.hit = 12; }
+        p.hitIds.add(game.boss.id);
+        p.alive = false;
+      }
+    }
+    game.skillWaves = game.skillWaves.filter(p => p.alive);
+
+    for (const p of game.starBursts) {
+      p.cx += 10 * p.d;
+      p.rotation = (p.rotation + 14 * p.d) % 360;
+      p.rect.x = Math.round(p.cx) - 110;
+      p.rect.y = Math.round(p.cy) - 110;
+      if (p.rect.x + p.rect.w < 0 || p.rect.x > WIDTH) p.alive = false;
+      for (const en of game.enemies) {
+        if (en.hp > 0 && !p.hitIds.has(en.id) && rectsOverlap(p.rect, en.rect)) {
+          if (en.hit <= 0) { en.hp -= S.SKILL_STORM_DAMAGE; en.hit = 12; }
+          p.hitIds.add(en.id);
+        }
+      }
+      if (game.boss && game.boss.hp > 0 && !p.hitIds.has(game.boss.id) && rectsOverlap(p.rect, game.boss.rect)) {
+        if (game.boss.hit <= 0) { game.boss.hp -= S.SKILL_STORM_BOSS_DAMAGE; game.boss.hit = 12; }
+        p.hitIds.add(game.boss.id);
+      }
+    }
+    game.starBursts = game.starBursts.filter(p => p.alive);
+
+    for (const t of game.dashTrails) t[1] -= 1;
+    game.dashTrails = game.dashTrails.filter(t => t[1] > 0);
+
+    game.player.update(game.lvl.platforms, game.lvl.spawn);
+    for (const en of game.enemies) updateEntity(en);
+    if (game.boss && game.boss.hp > 0) {
+      updateEntity(game.boss);
+      game.boss.fire = (game.boss.fire + 1) % 180;
+    }
+
+    for (const c of game.coins) {
+      if (!c.got && rectsOverlap(game.player.rect, c.rect)) {
+        c.got = true;
+        game.collected += 1;
+        const before = game.mana;
+        game.mana = Math.min(S.MAX_MANA, game.mana + S.MANA_PER_COIN);
+        audio.sound('coin');
+        if (game.mana > before) audio.sound('mana_restore');
+      }
+    }
+
+    const ar = game.player.attackRect();
+    if (ar.w > 0) {
+      for (const en of game.enemies) {
+        if (en.hp > 0 && rectsOverlap(ar, en.rect) && en.hit <= 0) { en.hp -= 1; en.hit = 12; }
+      }
+      if (game.boss && game.boss.hp > 0 && rectsOverlap(ar, game.boss.rect) && game.boss.hit <= 0) {
+        game.boss.hp -= 1; game.boss.hit = 12;
+      }
+    }
+
+    game.enemies = game.enemies.filter(en => en.hp > 0);
+    for (const en of game.enemies) {
+      if (rectsOverlap(game.player.rect, en.rect) && game.hurtPlayer()) audio.sound('hurt');
+    }
+    if (game.boss && game.boss.hp > 0) {
+      const fr = bossFireRect(game.boss);
+      if (rectsOverlap(game.player.rect, game.boss.rect) || (fr.w > 0 && rectsOverlap(game.player.rect, fr))) {
+        if (game.hurtPlayer()) audio.sound('hurt');
+      }
+    }
+
+    const dmgZones = (game.lvl.damage_zones || []).map(toRect);
+    if (dmgZones.some(z => rectsOverlap(game.player.rect, z)) && game.player.dmgCd <= 0) {
+      game.hurtPlayer(1, false);
+      game.player.dmgCd = S.DAMAGE_ZONE_COOLDOWN;
+      audio.sound('hurt');
+    }
+
+    const deathZones = (game.lvl.death_zones || []).map(toRect);
+    if (deathZones.some(z => rectsOverlap(game.player.rect, z)) || game.player.rect.y > HEIGHT + 80) {
+      audio.sound('spike');
+      game.player.health = 0;
+      game.player.dead = true;
+      game.state = 'game_over';
+      audio.playMusic('game_over');
+      return;
+    }
+    if (game.player.dead) {
+      game.state = 'game_over';
+      audio.playMusic('game_over');
+      return;
+    }
+
+    const bossOk = !game.boss || game.boss.hp <= 0;
+    if (rectsOverlap(game.player.rect, toRect(game.lvl.portal)) && game.collected >= game.lvl.required_coins && bossOk) {
+      audio.sound('portal');
+      game.startQuestion();
+    }
+  }
+
+  function drawScene(name) {
+    const vid = assets.videos[name];
+    const fallback = name === 'opening' ? assets.openingImg : name === 'tutorial' ? assets.tutorialImg : assets.endingImg;
+    if (vid && vid.readyState >= 2) {
+      ctx.drawImage(vid, 0, 0, WIDTH, HEIGHT);
+    } else if (fallback && fallback.complete) {
+      ctx.drawImage(fallback, 0, 0, WIDTH, HEIGHT);
+    } else {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    }
+  }
+
+  function drawUI() {
+    const topY = 12, heartsX = 230, heartStep = 46;
+    const heartsCenter = heartsX + ((S.MAX_HEALTH - 1) * heartStep + 42) / 2;
+    const manaCenter = 576, manaBarW = 170, skillsX = 696;
+
+    for (let i = 0; i < S.MAX_HEALTH; i++) {
+      const img = i < game.player.health ? assets.hfull : assets.hempty;
+      if (img && img.complete) ctx.drawImage(img, heartsX + i * heartStep, topY, 42, 42);
+    }
+    drawOutlineText(`Xu: ${game.collected}/${game.lvl.required_coins}`, 26, '#fff', heartsCenter, topY + 55, '#000', 2, true);
+    drawOutlineText(`Mana: ${Math.floor(game.mana)}/${S.MAX_MANA}`, 26, '#fff', manaCenter, topY + 21, '#000', 2, true);
+
+    const bx = manaCenter - manaBarW / 2, by = topY + 53, bw = manaBarW, bh = 21;
+    ctx.fillStyle = '#050a14';
+    ctx.fillRect(bx, by, bw, bh);
+    const ratio = Math.max(0, Math.min(1, game.mana / S.MAX_MANA));
+    const iw = Math.floor((bw - 6) * ratio);
+    if (iw > 0) {
+      ctx.fillStyle = (game.manaFlash > 0 && Math.floor(game.manaFlash / 4) % 2 === 0) ? '#ff4646'
+                    : (game.mana < 20) ? '#a52d91'
+                    : (game.mana <= 50) ? '#23bee0' : '#1973ee';
+      ctx.fillRect(bx + 3, by + 3, iw, bh - 6);
+    }
+    ctx.strokeStyle = '#f5b941';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, bw, bh);
+
+    const skillData = [
+      ['Q', S.SKILL_WAVE_COST, S.SKILL_WAVE_COOLDOWN],
+      ['E', S.SKILL_SHIELD_COST, S.SKILL_SHIELD_COOLDOWN],
+      ['R', S.SKILL_DASH_COST, S.SKILL_DASH_COOLDOWN],
+      ['T', S.SKILL_STORM_COST, S.SKILL_STORM_COOLDOWN]
+    ];
+    const boxW = 49, boxH = 54, gap = 10, iconY = topY + 29;
+    skillData.forEach(([key, cost, maxCd], i) => {
+      const x = skillsX + i * (boxW + gap);
+      drawOutlineText(key, 16, '#ffeb78', x + boxW / 2, topY + 7, '#000', 1, true);
+      ctx.fillStyle = 'rgba(8, 14, 28, 0.45)';
+      ctx.fillRect(x, iconY, boxW, boxH);
+      ctx.strokeStyle = 'rgba(245, 190, 75, 0.7)';
+      ctx.strokeRect(x, iconY, boxW, boxH);
+      const ic = assets.skills[key];
+      if (ic && ic.complete) ctx.drawImage(ic, x + 3, iconY + 2, 42, 42);
+      const cd = game.cooldowns[key];
+      if (cd > 0) {
+        const darkH = Math.max(1, Math.floor(42 * (cd / maxCd)));
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(x + 3, iconY + 2 + 42 - darkH, 42, darkH);
+        drawOutlineText((cd / FPS).toFixed(1), 16, '#fff', x + boxW / 2, iconY + 23, '#000', 2, true);
+      }
+      drawOutlineText(String(cost), 13, '#91e1ff', x + boxW / 2, iconY + 48, '#000', 1, true);
+    });
+
+    if (game.skillMsgTime > 0) {
+      drawOutlineText(game.skillMsg, 32, '#fff', WIDTH / 2, 676, '#000', 2, true);
+    }
+    if (game.idx === 9 && game.boss && game.boss.hp > 0) {
+      drawOutlineText(`BOSS RỒNG LỬA: ${game.boss.hp}/30`, 23, '#ffe6aa', WIDTH / 2, 126, '#000', 2, true);
+    }
+  }
+
+  function drawPlaying() {
+    const bg = assets.bgs[game.idx];
+    if (bg && bg.complete) ctx.drawImage(bg, 0, 0, WIDTH, HEIGHT);
+    else { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, WIDTH, HEIGHT); }
+
+    for (const c of game.coins) {
+      if (!c.got && assets.coin.complete) ctx.drawImage(assets.coin, c.rect.x, c.rect.y, 34, 34);
+    }
+
+    for (const en of game.enemies) {
+      const img = assets.enemies[en.type] || assets.enemies.slime;
+      if (img && img.complete) {
+        ctx.save();
+        const cx = en.rect.x + en.rect.w / 2;
+        const bottom = en.rect.y + en.rect.h;
+        ctx.translate(cx, bottom - 27);
+        if (en.dir < 0) ctx.scale(-1, 1);
+        ctx.drawImage(img, -27, -27, 54, 54);
+        ctx.restore();
+      }
+      if (en.hp < en.maxHp) {
+        ctx.fillStyle = '#3c0000';
+        ctx.fillRect(en.rect.x, en.rect.y - 8, en.rect.w, 5);
+        ctx.fillStyle = '#ff4646';
+        ctx.fillRect(en.rect.x, en.rect.y - 8, Math.floor(en.rect.w * en.hp / en.maxHp), 5);
+      }
+    }
+
+    if (game.boss && game.boss.hp > 0) {
+      const b = game.boss;
+      if (assets.boss && assets.boss.complete) {
+        ctx.save();
+        const cx = b.rect.x + b.rect.w / 2;
+        const bottom = b.rect.y + b.rect.h;
+        ctx.translate(cx, bottom - 95);
+        if (b.dir > 0) ctx.scale(-1, 1);
+        ctx.drawImage(assets.boss, -120, -95, 240, 190);
+        ctx.restore();
+      }
+      const fr = bossFireRect(b);
+      if (fr.w > 0) {
+        ctx.fillStyle = 'rgba(255, 90, 0, 0.75)';
+        ctx.fillRect(fr.x, fr.y, fr.w, fr.h);
+        ctx.fillStyle = '#ffdc50';
+        ctx.fillRect(fr.x + 12, fr.y + 9, fr.w - 24, fr.h - 18);
+      }
+      ctx.fillStyle = '#230000';
+      ctx.fillRect(281, 145, 590, 22);
+      ctx.fillStyle = '#ff3723';
+      ctx.fillRect(281, 145, Math.floor(590 * b.hp / b.maxHp), 22);
+      ctx.strokeStyle = '#ffdc78';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(281, 145, 590, 22);
+    }
+
+    for (const [r, life] of game.dashTrails) {
+      const img = assets.player[game.player.facing > 0 ? 'r' : 'l'];
+      if (img && img.complete) {
+        ctx.save();
+        ctx.globalAlpha = 0.55 * (life / 24);
+        ctx.drawImage(img, r.x - 5, r.y - 7, 56, 62);
+        ctx.restore();
+      }
+    }
+
+    for (const p of game.skillWaves) {
+      drawWaveArc(p.rect.x + p.rect.w / 2, p.rect.y + p.rect.h / 2, p.d, 1.0, 1.05);
+    }
+
+    for (const p of game.starBursts) {
+      ctx.save();
+      ctx.translate(p.cx, p.cy);
+      ctx.rotate((p.rotation * Math.PI) / 180);
+      for (const ang of [45, 135, 225, 315]) {
+        ctx.save();
+        ctx.rotate((ang * Math.PI) / 180);
+        drawWaveArc(35, 0, 1, 0.95, 0.85);
+        ctx.restore();
+      }
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,245,175,0.95)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    game.player.draw();
+
+    if (game.shieldTime > 0 && assets.shield.complete) {
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(assets.shield, game.player.rect.x - 4, game.player.rect.y + 8, 54, 54);
+      ctx.restore();
+    }
+
+    drawUI();
+
+    if (performance.now() - game.startTicks < 2000) {
+      drawOutlineText(`Màn ${game.idx + 1}: ${game.lvl.title}`, 52, '#fff', WIDTH / 2, HEIGHT / 2, '#000', 3, true);
+    }
+
+    if (rectsOverlap(game.player.rect, toRect(game.lvl.portal))) {
+      let msg = '';
+      if (game.idx === 9 && (game.collected < game.lvl.required_coins || (game.boss && game.boss.hp > 0))) {
+        msg = 'Bạn cần thu thập đủ xu và đánh bại boss để qua màn.';
+      } else if (game.collected < game.lvl.required_coins) {
+        msg = 'Chưa đủ xu để qua màn!';
+      }
+      if (msg) drawOutlineText(msg, 32, '#fff', WIDTH / 2, 610, '#000', 2, true);
+    }
+  }
+
+  function overlayText(title, msg, color) {
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    drawOutlineText(title, 56, color, WIDTH / 2, 285, '#000', 3, true);
+    drawOutlineText(msg, 28, '#fff', WIDTH / 2, 360, '#000', 2, true);
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    if (game.state === 'opening') {
+      drawScene('opening');
+    } else if (game.state === 'tutorial') {
+      drawScene('tutorial');
+    } else if (game.state === 'class_select') {
+      drawScene('tutorial');
+      ctx.fillStyle = 'rgba(0,0,0,0.68)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      drawOutlineText('CHỌN LỚP', 56, '#ffeb78', WIDTH / 2, 190, '#000', 3, true);
+      const lines = [
+        'Nhấn phím số để chọn gói câu hỏi:',
+        '1 - Lớp 1', '2 - Lớp 2', '3 - Lớp 3', '4 - Lớp 4', '5 - Lớp 5',
+        '8 - Bật/tắt nhạc nền', '9 - Bật/tắt âm thanh'
+      ];
+      lines.forEach((l, i) => drawOutlineText(l, 28, '#fff', WIDTH / 2, 270 + i * 43, '#000', 2, true));
+    } else if (game.state === 'playing') {
+      drawPlaying();
+    } else if (game.state === 'question') {
+      drawPlaying();
+      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      const q = game.currentQuestion();
+      drawOutlineText('TRẢ LỜI CÂU HỎI ĐỂ QUA MÀN', 44, '#ffdc46', WIDTH / 2, 105, '#000', 3, true);
+      let y = drawWrappedText(`Câu ${game.idx + 1} - Lớp ${game.grade}: ${q.q}`, 28, '#fff', 110, 190, WIDTH - 220, 9, true) + 28;
+      const labels = ['1/A', '2/B', '3/C', '4/D'];
+      const [fbI, fbOk] = game.questionFeedback || [null, null];
+      q.opts.forEach((opt, i) => {
+        const c = (fbI === i && fbOk) ? '#46ff5a' : (fbI === i) ? '#ff4b4b' : '#fff';
+        y = drawWrappedText(`${labels[i]}. ${opt}`, 28, c, 195, y, WIDTH - 390, 6, false) + 9;
+      });
+      let status, sc;
+      if (game.questionFeedback) {
+        status = fbOk ? ('Đúng! ' + q.exp) : 'SAI RỒI! HÃY CHỌN LẠI.';
+        sc = fbOk ? '#4bff64' : '#ff5f55';
+      } else {
+        status = `BẠN CÒN ${2 - game.questionAttempts} LƯỢT TRẢ LỜI - NHẤN 1-4 HOẶC A-D`;
+        sc = '#ffe682';
+      }
+      drawWrappedText(status, 28, sc, 125, Math.max(y + 20, 555), WIDTH - 250, 7, true);
+    } else if (game.state === 'paused') {
+      drawPlaying();
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      const lines = [
+        'TẠM DỪNG',
+        'Bấm F10 để tiếp tục',
+        `Bấm phím 8 để ${audio.musicEnabled ? 'tắt' : 'mở'} nhạc nền`,
+        `Bấm phím 9 để ${audio.soundEnabled ? 'tắt' : 'mở'} âm thanh`
+      ];
+      lines.forEach((l, i) => drawOutlineText(l, i === 0 ? 56 : 28, i === 0 ? '#ffe65a' : '#fff', WIDTH / 2, 230 + i * 70, '#000', 2, true));
+    } else if (game.state === 'victory') {
+      drawPlaying();
+      overlayText('CHIẾN THẮNG!', 'Nhấn ENTER để tiếp tục', '#ffe150');
+    } else if (game.state === 'game_over') {
+      drawPlaying();
+      overlayText('GAME OVER', 'Nhấn CTRL hoặc ENTER để chơi lại màn này', '#ff2d2d');
+    } else if (game.state === 'ending') {
+      drawScene('ending');
+    } else if (game.state === 'ending_wait') {
+      drawScene('ending');
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, 648, WIDTH, 120);
+      drawOutlineText('Bấm Phím Enter để chơi lại', 28, '#fff578', WIDTH / 2, 705, '#000', 2, true);
+    }
+  }
+
+  let lastTime = performance.now();
+  const frameInterval = 1000 / FPS;
+  function loop(now) {
+    const dt = now - lastTime;
+    if (dt >= frameInterval) {
+      lastTime = now - (dt % frameInterval);
+      updateGame();
+      render();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
+"""
+
+# Khai báo top-level `app` và `application` chuẩn WSGI cho Vercel Python Runtime
+app = Flask(__name__, static_folder=None)
+application = app
+
+if _HAS_FLASK:
+    @app.route('/')
+    def index():
+        return Response(WEB_HTML, mimetype='text/html; charset=utf-8')
+
+    @app.route('/api/config')
+    def api_config():
+        return jsonify(build_web_config())
+
+    @app.route('/<path:filepath>')
+    def serve_static_files(filepath):
+        rel = resolve_rel(filepath)
+        if not rel:
+            return Response('Not Found', status=404, mimetype='text/plain; charset=utf-8')
+        fp = os.path.join(BASE_DIR, rel)
+        if not os.path.isfile(fp):
+            return Response('Not Found', status=404, mimetype='text/plain; charset=utf-8')
+        return send_file(fp, conditional=True)
+
 
 if __name__=='__main__':
-    app.run()
+    if '--web' in sys.argv:
+        from wsgiref.simple_server import make_server
+        print('Serving Badge Journey Web on http://127.0.0.1:8000 ...')
+        with make_server('0.0.0.0', 8000, app) as httpd:
+            httpd.serve_forever()
+    else:
+        Game().run()
