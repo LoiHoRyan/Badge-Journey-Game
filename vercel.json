@@ -2,14 +2,30 @@
   "version": 2,
   "builds": [
     {
+      "src": "assets/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "music/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "data/**",
+      "use": "@vercel/static"
+    },
+    {
       "src": "main.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
+      "src": "/(assets|music|data)/(.*)",
+      "dest": "/$1/$2"
+    },
+    {
       "src": "/(.*)",
-      "dest": "main.py"
+      "dest": "/main.py"
     }
   ]
 }
