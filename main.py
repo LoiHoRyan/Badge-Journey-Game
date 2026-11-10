@@ -53,6 +53,40 @@ from settings import *
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Bản đồ ánh xạ chính xác tên file phân biệt hoa/thường trong repo GitHub (phục vụ Linux / Vercel CDN)
+EXACT_REPO_FILES = {
+    'music/openingsong.mp3': 'music/openingsong.MP3',
+    'music/tutorial.mp3': 'music/tutorial.MP3',
+    'music/traloicauhoi.mp3': 'music/traloicauhoi.MP3',
+    'music/endingsong.mp3': 'music/endingsong.MP3',
+    'music/gameover.mp3': 'music/gameover.MP3',
+    'music/resumegame.mp3': 'music/resumegame.mp3',
+    'music/man1dongco.mp3': 'music/man1dongco.MP3',
+    'music/man2samac.mp3': 'music/man2samac.MP3',
+    'music/man3baibien.mp3': 'music/man3baibien.mp3',
+    'music/man4rungsau.mp3': 'music/man4rungsau.MP3',
+    'music/man5vungtuyet.mp3': 'music/man5vungtuyet.mp3',
+    'music/man6nuilua.mp3': 'music/man6nuilua.MP3',
+    'music/man7thanhphotrenmay.mp3': 'music/man7thanhphotrenmay.MP3',
+    'music/man8nhamaycokhi.mp3': 'music/man8nhamaycokhi.MP3',
+    'music/man9khonggian.mp3': 'music/man9khonggian.MP3',
+    'music/man10dencocuoicung.mp3': 'music/man10dencocuoicung.MP3',
+    'music/hit.mp3': 'music/hit.MP3',
+    'music/portal.mp3': 'music/portal.MP3',
+    'music/spiketrap.mp3': 'music/spiketrap.MP3',
+    'music/tiengmatmau.mp3': 'music/tiengmatmau.MP3',
+    'music/tiengxu.mp3': 'music/tiengxu.MP3',
+    'music/victory.mp3': 'music/victory.MP3',
+    'music/skill_wave.mp3': 'music/skill_wave.mp3',
+    'music/skill_shield.mp3': 'music/skill_shield.mp3',
+    'music/skill_shield_break.mp3': 'music/skill_shield_break.mp3',
+    'music/skill_dash.mp3': 'music/skill_dash.mp3',
+    'music/skill_storm.mp3': 'music/skill_storm.MP3',
+    'music/no_mana.mp3': 'music/no_mana.MP3',
+    'music/skill_cooldown.mp3': 'music/skill_cooldown.MP3',
+    'music/mana_restore.mp3': 'music/mana_restore.MP3',
+}
+
 def resolve_rel(rel_p):
     rel_p = str(rel_p).replace('\\', '/').lstrip('/')
     if not rel_p or '..' in rel_p.split('/'):
@@ -63,6 +97,7 @@ def resolve_rel(rel_p):
     parts = rel_p.split('/')
     cur = BASE_DIR
     resolved = []
+    found_on_disk = True
     for part in parts:
         cand = os.path.join(cur, part)
         if os.path.exists(cand):
@@ -74,153 +109,130 @@ def resolve_rel(rel_p):
                 resolved.append(matches[0])
                 cur = os.path.join(cur, matches[0])
             else:
-                return None
+                found_on_disk = False
+                break
         else:
-            return None
-    return '/'.join(resolved)
+            found_on_disk = False
+            break
+    if found_on_disk and resolved:
+        return '/'.join(resolved)
+    return EXACT_REPO_FILES.get(rel_p.lower(), rel_p)
 
 def path(p):
     rel = resolve_rel(p)
     return os.path.join(BASE_DIR, rel if rel else p)
 
-def clamp(v, a, b):
-    return max(a, min(b, v))
-
-def load_image(p, size=None, smooth=False):
-    try:
-        img = pygame.image.load(path(p)).convert_alpha()
+def clamp(v,a,b): return max(a,min(b,v))
+def load_image(p,size=None,smooth=False):
+    try: img=pygame.image.load(path(p)).convert_alpha()
     except Exception:
-        img = pygame.Surface((60, 60), pygame.SRCALPHA)
-        img.fill((255, 0, 255, 180))
-        pygame.draw.rect(img, (0, 0, 0), img.get_rect(), 3)
-    if size:
-        img = pygame.transform.smoothscale(img, size) if smooth else pygame.transform.scale(img, size)
+        img=pygame.Surface((60,60),pygame.SRCALPHA); img.fill((255,0,255,180)); pygame.draw.rect(img,(0,0,0),img.get_rect(),3)
+    if size: img=pygame.transform.smoothscale(img,size) if smooth else pygame.transform.scale(img,size)
     return img
-
 def get_font(sz):
-    fp = path('assets/font/Minecraft.ttf')
-    return pygame.font.Font(fp, sz) if os.path.exists(fp) else pygame.font.SysFont('consolas', sz, bold=True)
+    fp=path('assets/font/Minecraft.ttf')
+    return pygame.font.Font(fp,sz) if os.path.exists(fp) else pygame.font.SysFont('consolas',sz,bold=True)
 
 def find_video_file(names):
-    candidates = []
+    """Tìm mp4 linh hoạt: ưu tiên assets/scenes, nhưng cũng nhận file đặt ở thư mục gốc.
+    Chấp nhận cả tên có/không có .mp4 và không phân biệt hoa thường.
+    """
+    candidates=[]
     for name in names:
-        base = os.path.splitext(name)[0]
-        for folder in ('assets/scenes', 'assets/Scenes', '.'):
-            candidates.append(os.path.join(folder, base + '.mp4'))
-            candidates.append(os.path.join(folder, base + '.MP4'))
+        base=os.path.splitext(name)[0]
+        for folder in ('assets/scenes','assets/Scenes','.'):
+            candidates.append(os.path.join(folder, base+'.mp4'))
+            candidates.append(os.path.join(folder, base+'.MP4'))
             candidates.append(os.path.join(folder, base))
     for rel in candidates:
         if os.path.exists(path(rel)):
             return path(rel)
-    wanted = {os.path.splitext(n)[0].lower() for n in names}
+    # quét thư mục để tránh lỗi Windows ẩn đuôi file hoặc khác hoa/thường
+    wanted={os.path.splitext(n)[0].lower() for n in names}
     for folder in (path('assets/scenes'), BASE_DIR):
         if os.path.isdir(folder):
             for fn in os.listdir(folder):
-                stem, ext = os.path.splitext(fn)
-                if stem.lower() in wanted and ext.lower() == '.mp4':
-                    return os.path.join(folder, fn)
+                stem,ext=os.path.splitext(fn)
+                if stem.lower() in wanted and ext.lower()=='.mp4':
+                    return os.path.join(folder,fn)
     return None
 
 def wrap_text(text, font_obj, max_width):
-    words = str(text).split(' ')
-    lines = []
-    current = ''
+    words=str(text).split(' ')
+    lines=[]; current=''
     for word in words:
-        test = word if not current else current + ' ' + word
+        test=word if not current else current+' '+word
         if font_obj.size(test)[0] <= max_width:
-            current = test
+            current=test
         else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
+            if current: lines.append(current)
+            current=word
+    if current: lines.append(current)
     return lines
 
 def draw_wrapped_text(surface, text, font_obj, color, x, y, max_width, line_gap=6, center=False):
     for line in wrap_text(text, font_obj, max_width):
-        img = font_obj.render(line, True, color)
-        rect = img.get_rect()
+        img=font_obj.render(line, True, color)
+        rect=img.get_rect()
         if center:
-            rect.centerx = x + max_width // 2
-            rect.y = y
+            rect.centerx=x+max_width//2; rect.y=y
         else:
-            rect.topleft = (x, y)
+            rect.topleft=(x,y)
         surface.blit(img, rect)
-        y += img.get_height() + line_gap
+        y += img.get_height()+line_gap
     return y
 
 class VideoPlayer:
     def __init__(self, names, fallback_surface=None, size=(WIDTH, HEIGHT)):
-        self.size = size
-        self.fallback = fallback_surface
-        self.video_path = find_video_file(names)
-        self.cap = None
-        self.fps = 30
-        self.frame = None
-        self.last_tick = 0
-        self.error = ''
+        self.size=size; self.fallback=fallback_surface
+        self.video_path=find_video_file(names)
+        self.cap=None; self.fps=30; self.frame=None; self.last_tick=0
+        self.error=''
         if self.video_path and cv2 is not None:
             self.open()
         elif self.video_path and cv2 is None:
-            self.error = 'Chuyển động MP4 cần opencv-python'
+            self.error='Chưa cài opencv-python để đọc MP4'
         else:
-            self.error = 'Khong tim thay file MP4'
+            self.error='Không tìm thấy file MP4'
     def open(self):
         try:
-            self.cap = cv2.VideoCapture(self.video_path)
+            self.cap=cv2.VideoCapture(self.video_path)
             if not self.cap or not self.cap.isOpened():
-                self.cap = None
-                self.error = 'Khong mo duoc MP4'
-                return
-            fps = self.cap.get(cv2.CAP_PROP_FPS)
-            self.fps = fps if fps and fps > 1 else 30
+                self.cap=None; self.error='Không mở được MP4'; return
+            fps=self.cap.get(cv2.CAP_PROP_FPS)
+            self.fps=fps if fps and fps>1 else 30
         except Exception as e:
-            self.cap = None
-            self.error = str(e)
+            self.cap=None; self.error=str(e)
     def reset(self):
         if self.cap:
-            try:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            except Exception:
-                pass
+            try: self.cap.set(cv2.CAP_PROP_POS_FRAMES,0)
+            except Exception: pass
     def draw(self, surface):
         if not self.cap:
-            if self.fallback:
-                surface.blit(self.fallback, (0, 0))
-            else:
-                surface.fill((0, 0, 0))
+            if self.fallback: surface.blit(self.fallback,(0,0))
+            else: surface.fill((0,0,0))
+            # hiện cảnh báo nhỏ thay vì chỉ màn hồng để biết lỗi nằm ở đâu
             try:
-                f = pygame.font.SysFont('consolas', 20, bold=True)
-                msg = self.error or 'MP4 chua san sang'
-                img = f.render(msg, True, (255, 255, 255))
-                bg = pygame.Surface((img.get_width() + 24, img.get_height() + 16), pygame.SRCALPHA)
-                bg.fill((0, 0, 0, 170))
-                surface.blit(bg, (20, 20))
-                surface.blit(img, (32, 28))
-            except Exception:
-                pass
+                f=pygame.font.SysFont('consolas',20,bold=True)
+                msg=self.error or 'MP4 chưa sẵn sàng'
+                img=f.render(msg,True,(255,255,255)); bg=pygame.Surface((img.get_width()+24,img.get_height()+16),pygame.SRCALPHA); bg.fill((0,0,0,170))
+                surface.blit(bg,(20,20)); surface.blit(img,(32,28))
+            except Exception: pass
             return
-        now = pygame.time.get_ticks()
-        if self.frame is None or now - self.last_tick >= int(1000 / max(1, self.fps)):
-            ok, frame = self.cap.read()
+        now=pygame.time.get_ticks()
+        if self.frame is None or now-self.last_tick >= int(1000/max(1,self.fps)):
+            ok, frame=self.cap.read()
             if not ok:
-                self.reset()
-                ok, frame = self.cap.read()
+                self.reset(); ok, frame=self.cap.read()
             if ok:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame = cv2.resize(frame, self.size)
-                self.frame = pygame.image.frombuffer(frame.tobytes(), self.size, 'RGB').convert()
-            self.last_tick = now
-        if self.frame:
-            surface.blit(self.frame, (0, 0))
-        elif self.fallback:
-            surface.blit(self.fallback, (0, 0))
-        else:
-            surface.fill((0, 0, 0))
-
-QUESTION_BANK={1: [('Số liền sau của số 9 là số nào?', ['8', '10', '7', '11'], 1, 'Số liền sau của 9 là 10.'), ("Từ nào dưới đây có tiếng chứa âm 'ch'?", ['Con cá', 'Cái chổi', 'Viên phấn', 'Quả bóng'], 1, "Từ 'chổi' có âm đầu là 'ch'."), ('Phép tính nào dưới đây có kết quả nhỏ nhất?', ['2 + 3', '5 - 1', '6 - 4', '1 + 2'], 2, '6 - 4 = 2 là nhỏ nhất.'), ('Điền vần: Che chở cho con, đó là tình m____.', ['ẹ', 'a', 'u', 'ơ'], 0, "Ghép vần 'ẹ' được từ mẹ."), ('Bộ phận nào giúp em nghe thấy tiếng nhạc?', ['Mắt', 'Mũi', 'Tai', 'Tay'], 2, 'Tai giúp nghe âm thanh.'), ('Hình nào có 3 cạnh?', ['Hình vuông', 'Hình tròn', 'Hình tam giác', 'Hình chữ nhật'], 2, 'Hình tam giác có 3 cạnh.'), ('Khi gặp thầy cô giáo, em nên làm gì?', ['Đi thẳng', 'Khoanh tay chào lễ phép', 'Chạy trốn', 'Chỉ tay nói to'], 1, 'Chào lễ phép thể hiện kính trọng.'), ('Từ nào viết đúng chính tả?', ['Gà trống', 'Gà giống', 'Gà rống', 'Gà chông'], 0, 'Viết đúng là gà trống.'), ('AB dài 4cm, BC dài 5cm. Cả hai dài bao nhiêu?', ['8cm', '9cm', '10cm', '1cm'], 1, '4 + 5 = 9cm.'), ('Đâu là con vật nuôi quen thuộc?', ['Con hổ', 'Con sư tử', 'Con mèo', 'Con gấu'], 2, 'Con mèo là vật nuôi quen thuộc.')], 2: [('Tìm x, biết x - 15 = 20.', ['x = 5', 'x = 35', 'x = 25', 'x = 15'], 1, 'x = 20 + 15 = 35.'), ('Từ nào chỉ hoạt động của học sinh?', ['Đọc sách', 'Sách giáo khoa', 'Trường học', 'Chăm chỉ'], 0, 'Đọc sách là hoạt động.'), ('Một ngày có bao nhiêu giờ?', ['12 giờ', '24 giờ', '60 giờ', '48 giờ'], 1, 'Một ngày có 24 giờ.'), ('Cơ quan nào giúp chúng ta thở?', ['Tim', 'Dạ dày', 'Phổi', 'Não'], 2, 'Phổi giúp cơ thể thở.'), ('Từ nào trái nghĩa với khen ngợi?', ['Chê bai', 'Yêu mến', 'Tuyên dương', 'Thưởng'], 0, 'Trái nghĩa là chê bai.'), ('Kết quả của 5 × 4 + 10 là:', ['20', '30', '40', '14'], 1, '5×4=20, 20+10=30.'), ('Từ nào chỉ màu xanh da trời?', ['Red', 'Green', 'Yellow', 'Blue'], 3, 'Blue là xanh dương.'), ('Làm đổ hộp bút của bạn, em cần làm gì?', ['Bỏ chạy', 'Nhặt giúp và xin lỗi', 'Đổ lỗi', 'Cười lớn'], 1, 'Cần nhặt giúp và xin lỗi.'), ('Số lớn nhất có hai chữ số là?', ['10', '90', '99', '100'], 2, 'Số lớn nhất có hai chữ số là 99.'), ('Cây hấp thụ nước chủ yếu bằng bộ phận nào?', ['Lá', 'Hoa', 'Thân', 'Rễ'], 3, 'Rễ hút nước và dinh dưỡng.')], 3: [('Số gồm 3 nghìn, 5 trăm và 2 đơn vị là:', ['352', '3520', '3502', '3052'], 2, 'Viết là 3502.'), ("Bộ phận trả lời 'Để làm gì?' trong câu: Em chăm học để bố mẹ vui lòng.", ['Em chăm học', 'để bố mẹ vui lòng', 'bố mẹ vui lòng', 'học để bố mẹ vui lòng'], 1, 'Đó là bộ phận chỉ mục đích.'), ('HCN dài 8cm, rộng 5cm. Diện tích là:', ['40 cm²', '26cm', '13 cm²', '40cm'], 0, '8×5=40 cm².'), ('Trái Đất quay quanh Mặt Trời mất bao lâu?', ['1 ngày', '1 tháng', '1 năm', '1 tuần'], 2, 'Khoảng 1 năm.'), ('Từ nào chỉ người làm việc trí thức?', ['Bác sĩ', 'Công nhân', 'Thợ may', 'Nông dân'], 0, 'Bác sĩ là lao động trí thức.'), ('84 : 4 bằng bao nhiêu?', ['20', '21', '22', '12'], 1, '84:4=21.'), ('Xóa ký tự trước con trỏ dùng phím nào?', ['Enter', 'Caps Lock', 'Backspace', 'Delete'], 2, 'Backspace xóa bên trái con trỏ.'), ('How _____ is she?', ['many', 'old', 'much', 'long'], 1, 'Hỏi tuổi dùng How old.'), ('Số chia là 6, số dư lớn nhất là:', ['6', '7', '5', '1'], 2, 'Số dư nhỏ hơn số chia, lớn nhất là 5.'), ('Nhạc cụ phát âm thanh bằng cách gảy dây?', ['Đàn sáo', 'Đàn tranh', 'Kèn Trumpet', 'Trống'], 1, 'Đàn tranh dùng dây đàn.')], 4: [('Giá trị chữ số 7 trong 475.210 là:', ['700', '7.000', '70.000', '700.000'], 2, '7 ở hàng chục nghìn.'), ("Chủ ngữ trong câu 'Đoàn thuyền đánh cá buồm căng gió ra khơi.' là:", ['Đoàn thuyền', 'Đoàn thuyền đánh cá', 'Buồm căng gió', 'Đoàn thuyền đánh cá buồm căng gió'], 1, 'Chủ ngữ là Đoàn thuyền đánh cá.'), ('Phân số nào bằng 2/3?', ['4/9', '6/9', '6/8', '2/6'], 1, '6/9 rút gọn được 2/3.'), ('Nước đóng băng ở nhiệt độ nào?', ['100°C', '37°C', '10°C', '0°C'], 3, 'Nước đóng băng ở 0°C.'), ('Ai lấy thân mình lấp lỗ châu mai?', ['Phan Đình Giót', 'Bế Văn Đàn', 'Tô Vĩnh Diện', 'Kim Đồng'], 0, 'Đó là Phan Đình Giót.'), ('Đồng bằng lớn nhất nước ta là:', ['Đồng bằng Bắc Bộ', 'Đồng bằng Nam Bộ', 'Duyên hải miền Trung', 'Sông Hồng'], 1, 'Đồng bằng Nam Bộ lớn nhất.'), ('Lớp 35 HS, nữ bằng 3/5. Có bao nhiêu nam?', ['21', '14', '15', '20'], 1, 'Nữ 21, nam 14.'), ('Từ nào là từ láy?', ['Mặt mũi', 'Long lanh', 'Sách vở', 'Tươi tốt'], 1, 'Long lanh là từ láy.'), ('Thực vật tự tổng hợp dinh dưỡng nhờ quá trình nào?', ['Hô hấp', 'Thoát hơi nước', 'Quang hợp', 'Hút nước'], 2, 'Quang hợp giúp cây tạo dinh dưỡng.'), ('Yesterday, my family _____ to the zoo.', ['go', 'goes', 'went', 'going'], 2, 'Yesterday dùng quá khứ: went.')], 5: [("Số thập phân 'Không đơn vị, hai mươi lăm phần trăm' là:", ['0,25', '0,025', '25,0', '0,205'], 0, 'Viết là 0,25.'), ('Vì... nên... biểu thị quan hệ gì?', ['Giả thiết - Kết quả', 'Nguyên nhân - Kết quả', 'Tương phản', 'Tăng tiến'], 1, 'Đó là quan hệ nguyên nhân - kết quả.'), ('Diện tích hình tròn bán kính 2cm là:', ['6,28 cm²', '12,56 cm²', '12,56 cm', '3,14 cm²'], 1, 'S=2×2×3,14=12,56.'), ('Chất nào tồn tại ở cả 3 thể?', ['Sắt', 'Không khí', 'Nước', 'Thủy ngân'], 2, 'Nước có rắn, lỏng, khí.'), ('Ngày Quốc khánh Việt Nam là:', ['30/4', '19/8', '2/9', '22/12'], 2, 'Quốc khánh là 2/9.'), ('Đất liền Việt Nam nằm trên bán đảo nào?', ['Đông Dương', 'Triều Tiên', 'Mã Lai', 'Ả Rập'], 0, 'Việt Nam nằm trên bán đảo Đông Dương.'), ('Ô tô đi 50 km/giờ trong 2,5 giờ. Quãng đường là:', ['125 km', '20 km', '100 km', '12,5 km'], 0, '50×2,5=125 km.'), ('Thành ngữ nào nói về dũng cảm?', ['Kề vai sát cánh', 'Vào sinh ra tử', 'Uống nước nhớ nguồn', 'Nhường cơm sẻ áo'], 1, 'Vào sinh ra tử chỉ sự dũng cảm.'), ('Nguồn năng lượng sạch và vô tận là:', ['Than đá', 'Dầu mỏ', 'Năng lượng mặt trời', 'Khí đốt'], 2, 'Năng lượng mặt trời là sạch và vô chậm.'), ('She is the _____ student in my class.', ['good', 'better', 'best', 'well'], 2, 'So sanh nhat cua good la best.')]}
-
+                frame=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame=cv2.resize(frame,self.size)
+                self.frame=pygame.image.frombuffer(frame.tobytes(),self.size,'RGB').convert()
+            self.last_tick=now
+        if self.frame: surface.blit(self.frame,(0,0))
+        elif self.fallback: surface.blit(self.fallback,(0,0))
+        else: surface.fill((0,0,0))
+QUESTION_BANK={1: [('Số liền sau của số 9 là số nào?', ['8', '10', '7', '11'], 1, 'Số liền sau của 9 là 10.'), ("Từ nào dưới đây có tiếng chứa âm 'ch'?", ['Con cá', 'Cái chổi', 'Viên phấn', 'Quả bóng'], 1, "Từ 'chổi' có âm đầu là 'ch'."), ('Phép tính nào dưới đây có kết quả nhỏ nhất?', ['2 + 3', '5 - 1', '6 - 4', '1 + 2'], 2, '6 - 4 = 2 là nhỏ nhất.'), ('Điền vần: Che chở cho con, đó là tình m____.', ['ẹ', 'a', 'u', 'ơ'], 0, "Ghép vần 'ẹ' được từ mẹ."), ('Bộ phận nào giúp em nghe thấy tiếng nhạc?', ['Mắt', 'Mũi', 'Tai', 'Tay'], 2, 'Tai giúp nghe âm thanh.'), ('Hình nào có 3 cạnh?', ['Hình vuông', 'Hình tròn', 'Hình tam giác', 'Hình chữ nhật'], 2, 'Hình tam giác có 3 cạnh.'), ('Khi gặp thầy cô giáo, em nên làm gì?', ['Đi thẳng', 'Khoanh tay chào lễ phép', 'Chạy trốn', 'Chỉ tay nói to'], 1, 'Chào lễ phép thể hiện kính trọng.'), ('Từ nào viết đúng chính tả?', ['Gà trống', 'Gà giống', 'Gà rống', 'Gà chông'], 0, 'Viết đúng là gà trống.'), ('AB dài 4cm, BC dài 5cm. Cả hai dài bao nhiêu?', ['8cm', '9cm', '10cm', '1cm'], 1, '4 + 5 = 9cm.'), ('Đâu là con vật nuôi quen thuộc?', ['Con hổ', 'Con sư tử', 'Con mèo', 'Con gấu'], 2, 'Con mèo là vật nuôi quen thuộc.')], 2: [('Tìm x, biết x - 15 = 20.', ['x = 5', 'x = 35', 'x = 25', 'x = 15'], 1, 'x = 20 + 15 = 35.'), ('Từ nào chỉ hoạt động của học sinh?', ['Đọc sách', 'Sách giáo khoa', 'Trường học', 'Chăm chỉ'], 0, 'Đọc sách là hoạt động.'), ('Một ngày có bao nhiêu giờ?', ['12 giờ', '24 giờ', '60 giờ', '48 giờ'], 1, 'Một ngày có 24 giờ.'), ('Cơ quan nào giúp chúng ta thở?', ['Tim', 'Dạ dày', 'Phổi', 'Não'], 2, 'Phổi giúp cơ thể thở.'), ('Từ nào trái nghĩa với khen ngợi?', ['Chê bai', 'Yêu mến', 'Tuyên dương', 'Thưởng'], 0, 'Trái nghĩa là chê bai.'), ('Kết quả của 5 × 4 + 10 là:', ['20', '30', '40', '14'], 1, '5×4=20, 20+10=30.'), ('Từ nào chỉ màu xanh da trời?', ['Red', 'Green', 'Yellow', 'Blue'], 3, 'Blue là xanh dương.'), ('Làm đổ hộp bút của bạn, em cần làm gì?', ['Bỏ chạy', 'Nhặt giúp và xin lỗi', 'Đổ lỗi', 'Cười lớn'], 1, 'Cần nhặt giúp và xin lỗi.'), ('Số lớn nhất có hai chữ số là?', ['10', '90', '99', '100'], 2, 'Số lớn nhất có hai chữ số là 99.'), ('Cây hấp thụ nước chủ yếu bằng bộ phận nào?', ['Lá', 'Hoa', 'Thân', 'Rễ'], 3, 'Rễ hút nước và dinh dưỡng.')], 3: [('Số gồm 3 nghìn, 5 trăm và 2 đơn vị là:', ['352', '3520', '3502', '3052'], 2, 'Viết là 3502.'), ("Bộ phận trả lời 'Để làm gì?' trong câu: Em chăm học để bố mẹ vui lòng.", ['Em chăm học', 'để bố mẹ vui lòng', 'bố mẹ vui lòng', 'học để bố mẹ vui lòng'], 1, 'Đó là bộ phận chỉ mục đích.'), ('HCN dài 8cm, rộng 5cm. Diện tích là:', ['40 cm²', '26cm', '13 cm²', '40cm'], 0, '8×5=40 cm².'), ('Trái Đất quay quanh Mặt Trời mất bao lâu?', ['1 ngày', '1 tháng', '1 năm', '1 tuần'], 2, 'Khoảng 1 năm.'), ('Từ nào chỉ người làm việc trí thức?', ['Bác sĩ', 'Công nhân', 'Thợ may', 'Nông dân'], 0, 'Bác sĩ là lao động trí thức.'), ('84 : 4 bằng bao nhiêu?', ['20', '21', '22', '12'], 1, '84:4=21.'), ('Xóa ký tự trước con trỏ dùng phím nào?', ['Enter', 'Caps Lock', 'Backspace', 'Delete'], 2, 'Backspace xóa bên trái con trỏ.'), ('How _____ is she?', ['many', 'old', 'much', 'long'], 1, 'Hỏi tuổi dùng How old.'), ('Số chia là 6, số dư lớn nhất là:', ['6', '7', '5', '1'], 2, 'Số dư nhỏ hơn số chia, lớn nhất là 5.'), ('Nhạc cụ phát âm thanh bằng cách gảy dây?', ['Đàn sáo', 'Đàn tranh', 'Kèn Trumpet', 'Trống'], 1, 'Đàn tranh dùng dây đàn.')], 4: [('Giá trị chữ số 7 trong 475.210 là:', ['700', '7.000', '70.000', '700.000'], 2, '7 ở hàng chục nghìn.'), ("Chủ ngữ trong câu 'Đoàn thuyền đánh cá buồm căng gió ra khơi.' là:", ['Đoàn thuyền', 'Đoàn thuyền đánh cá', 'Buồm căng gió', 'Đoàn thuyền đánh cá buồm căng gió'], 1, 'Chủ ngữ là Đoàn thuyền đánh cá.'), ('Phân số nào bằng 2/3?', ['4/9', '6/9', '6/8', '2/6'], 1, '6/9 rút gọn được 2/3.'), ('Nước đóng băng ở nhiệt độ nào?', ['100°C', '37°C', '10°C', '0°C'], 3, 'Nước đóng băng ở 0°C.'), ('Ai lấy thân mình lấp lỗ châu mai?', ['Phan Đình Giót', 'Bế Văn Đàn', 'Tô Vĩnh Diện', 'Kim Đồng'], 0, 'Đó là Phan Đình Giót.'), ('Đồng bằng lớn nhất nước ta là:', ['Đồng bằng Bắc Bộ', 'Đồng bằng Nam Bộ', 'Duyên hải miền Trung', 'Sông Hồng'], 1, 'Đồng bằng Nam Bộ lớn nhất.'), ('Lớp 35 HS, nữ bằng 3/5. Có bao nhiêu nam?', ['21', '14', '15', '20'], 1, 'Nữ 21, nam 14.'), ('Từ nào là từ láy?', ['Mặt mũi', 'Long lanh', 'Sách vở', 'Tươi tốt'], 1, 'Long lanh là từ láy.'), ('Thực vật tự tổng hợp dinh dưỡng nhờ quá trình nào?', ['Hô hấp', 'Thoát hơi nước', 'Quang hợp', 'Hút nước'], 2, 'Quang hợp giúp cây tạo dinh dưỡng.'), ('Yesterday, my family _____ to the zoo.', ['go', 'goes', 'went', 'going'], 2, 'Yesterday dùng quá khứ: went.')], 5: [("Số thập phân 'Không đơn vị, hai mươi lăm phần trăm' là:", ['0,25', '0,025', '25,0', '0,205'], 0, 'Viết là 0,25.'), ('Vì... nên... biểu thị quan hệ gì?', ['Giả thiết - Kết quả', 'Nguyên nhân - Kết quả', 'Tương phản', 'Tăng tiến'], 1, 'Đó là quan hệ nguyên nhân - kết quả.'), ('Diện tích hình tròn bán kính 2cm là:', ['6,28 cm²', '12,56 cm²', '12,56 cm', '3,14 cm²'], 1, 'S=2×2×3,14=12,56.'), ('Chất nào tồn tại ở cả 3 thể?', ['Sắt', 'Không khí', 'Nước', 'Thủy ngân'], 2, 'Nước có rắn, lỏng, khí.'), ('Ngày Quốc khánh Việt Nam là:', ['30/4', '19/8', '2/9', '22/12'], 2, 'Quốc khánh là 2/9.'), ('Đất liền Việt Nam nằm trên bán đảo nào?', ['Đông Dương', 'Triều Tiên', 'Mã Lai', 'Ả Rập'], 0, 'Việt Nam nằm trên bán đảo Đông Dương.'), ('Ô tô đi 50 km/giờ trong 2,5 giờ. Quãng đường là:', ['125 km', '20 km', '100 km', '12,5 km'], 0, '50×2,5=125 km.'), ('Thành ngữ nào nói về dũng cảm?', ['Kề vai sát cánh', 'Vào sinh ra tử', 'Uống nước nhớ nguồn', 'Nhường cơm sẻ áo'], 1, 'Vào sinh ra tử chỉ sự dũng cảm.'), ('Nguồn năng lượng sạch và vô tận là:', ['Than đá', 'Dầu mỏ', 'Năng lượng mặt trời', 'Khí đốt'], 2, 'Năng lượng mặt trời là sạch và vô tận.'), ('She is the _____ student in my class.', ['good', 'better', 'best', 'well'], 2, 'So sánh nhất của good là best.')]}
 class Audio:
     def __init__(self):
         self.enabled=True; self.music_enabled=True; self.sound_enabled=True; self.current=None; self.sounds={}
@@ -254,7 +266,6 @@ class Audio:
         if self.enabled and self.sound_enabled and k in self.sounds:
             try: self.sounds[k].play()
             except Exception: pass
-
 class Player:
     def __init__(self,imgs,start):
         self.imgs=imgs; self.rect=pygame.Rect(start[0],start[1],46,55); self.x=float(self.rect.x); self.y=float(self.rect.y); self.vx=0; self.vy=0; self.facing=1; self.on_ground=False; self.jumps=2; self.health=MAX_HEALTH; self.attack=0; self.inv=0; self.dmg_cd=0; self.dead=False
@@ -286,6 +297,7 @@ class Player:
         if self.dmg_cd>0: self.dmg_cd-=1
         self.rect.x=clamp(self.rect.x,-20,WIDTH-25); self.x=self.rect.x
     def draw_sword_wave(self,screen):
+        # Sóng kiếm đậm hơn và bên trái được mirror từ bên phải để không bị ngược vòng cung.
         progress=(ATTACK_TIME-self.attack)/max(1,ATTACK_TIME)
         alpha=max(185, int(255*(1-progress*0.25)))
         wave=pygame.Surface((78,124), pygame.SRCALPHA)
@@ -304,7 +316,6 @@ class Player:
         if self.inv>0 and (self.inv//5)%2==0: return
         img=self.imgs[key]; screen.blit(img,img.get_rect(midbottom=self.rect.midbottom))
         if self.attack>0: self.draw_sword_wave(screen)
-
 def draw_outline_text(surface,font,text,color,pos,outline=(0,0,0),width=1,center=False):
     img=font.render(text,True,color); rect=img.get_rect()
     if center: rect.center=pos
@@ -362,27 +373,29 @@ class Enemy:
         screen.blit(img,img.get_rect(midbottom=self.rect.midbottom))
         if self.hp<self.max_hp:
             pygame.draw.rect(screen,(60,0,0),(self.rect.x,self.rect.y-8,self.rect.w,5)); pygame.draw.rect(screen,(255,70,70),(self.rect.x,self.rect.y-8,int(self.rect.w*self.hp/self.max_hp),5))
-
 class Boss(Enemy):
     def __init__(self,d,img): super().__init__(d,img); self.rect=pygame.Rect(d['x'],d['y'],210,150); self.x=float(self.rect.x); self.hp=d.get('hp',30); self.max_hp=self.hp; self.fire=0
     def update(self): super().update(); self.fire=(self.fire+1)%180
     def fire_rect(self):
         if not (45<self.fire<95): return pygame.Rect(0,0,0,0)
+        # Ảnh gốc rồng quay/phun sang trái. Khi đi sang phải phải lật ảnh và đặt lửa bên phải, tránh phun từ đuôi.
         return pygame.Rect(self.rect.right-16,self.rect.y+54,150,46) if self.dir>0 else pygame.Rect(self.rect.left-136,self.rect.y+54,150,46)
     def draw(self,screen):
+        # Fix: dir > 0 thì lật ảnh để đầu/miệng rồng quay sang phải; dir < 0 giữ ảnh gốc quay trái.
         img=pygame.transform.flip(self.img,True,False) if self.dir>0 else self.img
         screen.blit(img,img.get_rect(midbottom=self.rect.midbottom)); fr=self.fire_rect()
         if fr.w:
             pygame.draw.rect(screen,(255,90,0,180),fr,border_radius=18); pygame.draw.rect(screen,(255,220,80),fr.inflate(-25,-18),border_radius=12)
         pygame.draw.rect(screen,(35,0,0),(281,145,590,22),border_radius=6); pygame.draw.rect(screen,(255,55,35),(281,145,int(590*self.hp/self.max_hp),22),border_radius=6); pygame.draw.rect(screen,(255,220,120),(281,145,590,22),3,border_radius=6)
-
 class Game:
     def __init__(self):
         pygame.init(); self.audio=Audio(); info=pygame.display.Info(); self.display=pygame.display.set_mode((WIDTH,HEIGHT),pygame.RESIZABLE); self.screen=pygame.Surface((WIDTH,HEIGHT)).convert_alpha(); pygame.display.set_caption(TITLE); self.clock=pygame.time.Clock(); self.f=get_font(28); self.big=get_font(58); self.small=get_font(18); self.state='opening'; self.idx=0; self.grade=None; self.full=False; self.question_attempts=0; self.question_feedback=None; self.question_locked=False; self.question_result_until=0; self.mana=MAX_MANA; self.mana_regen_tick=0; self.mana_flash=0; self.skill_msg=''; self.skill_msg_time=0; self.cooldowns={'Q':0,'E':0,'R':0,'T':0}; self.shield_time=0; self.dash_inv_time=0; self.skill_waves=[]; self.star_bursts=[]; self.dash_trails=[]; self.load_assets(); self.load_levels(); self.audio.load(); self.audio.play_music('opening')
     def load_assets(self):
+        # Fallback ảnh cũ nếu chưa có MP4 hoặc chưa cài opencv-python.
         self.opening_img=load_image('assets/scenes/opening.png',(WIDTH,HEIGHT),True)
         self.tutorial_img=load_image('assets/scenes/tutorial.png',(WIDTH,HEIGHT),True)
         self.ending_img=load_image('assets/scenes/ending.png',(WIDTH,HEIGHT),True)
+        # MP4 tự lặp lại cho tới khi người chơi bấm Enter/Tab.
         self.videos={
             'opening': VideoPlayer(['opening','Opening'], self.opening_img),
             'tutorial': VideoPlayer(['tutorial','Tutorial','Hướng dẫn chơi'], self.tutorial_img),
@@ -390,9 +403,7 @@ class Game:
         }
         self.hfull=load_image('assets/ui/heart_full.png',(42,42)); self.hempty=load_image('assets/ui/heart_empty.png',(42,42)); self.coin_img=load_image('assets/items/coin.png',(34,34)); self.pimgs={'r':load_image('assets/player/right.png',(56,62),True),'l':load_image('assets/player/left.png',(56,62),True),'ar':load_image('assets/player/attack_right.png',(78,62),True),'al':load_image('assets/player/attack_left.png',(78,62),True)}; fs={'slime':'enemy_1_slime.png','hedgehog':'enemy_2_hedgehog.png','scorpion':'enemy_3_scorpion.png','frog':'enemy_4_frog.png','snowman':'enemy_5_snowman.png','fire_imp':'enemy_6_fire_imp.png','guard':'enemy_7_guard.png','robot_guard':'enemy_8_robot_guard.png','alien':'enemy_9_alien.png'}; self.eimgs={k:load_image('assets/enemies/'+v,(54,54)) for k,v in fs.items()}; self.boss_img=load_image('assets/boss/dragon.png',(240,190),True); self.shield_effect=load_image('assets/ui/skills/skill_shield.png',(70,70),True); self.skill_icons={'Q':load_image('assets/ui/skills/skill_wave.png',(48,48),True),'E':load_image('assets/ui/skills/skill_shield.png',(48,48),True),'R':load_image('assets/ui/skills/skill_dash.png',(48,48),True),'T':load_image('assets/ui/skills/skill_storm.png',(48,48),True)}
     def load_levels(self):
-        with open(path('data/levels.json'), encoding='utf-8') as f:
-            self.levels=json.load(f)['levels']
-        self.bgs=[load_image(l['background'],(WIDTH,HEIGHT),True) for l in self.levels]; self.load_level(0)
+        self.levels=json.load(open(path('data/levels.json'),encoding='utf-8'))['levels']; self.bgs=[load_image(l['background'],(WIDTH,HEIGHT),True) for l in self.levels]; self.load_level(0)
     def load_level(self,i):
         self.idx=i; self.lvl=self.levels[i]; self.lvl['player_start']=[self.lvl['spawn'][0]+20,self.lvl['spawn'][1]-58]; self.player=Player(self.pimgs,self.lvl['player_start']); self.coins=[{'rect':pygame.Rect(c[0],c[1],34,34),'got':False} for c in self.lvl['coins']]; self.enemies=[Enemy(e,self.eimgs.get(e['type'],self.eimgs['slime'])) for e in self.lvl['enemies']]; self.boss=Boss(self.lvl['boss'],self.boss_img) if self.lvl.get('boss') else None; self.collected=0; self.start_ticks=pygame.time.get_ticks(); self.mana=MAX_MANA; self.mana_regen_tick=0; self.cooldowns={'Q':0,'E':0,'R':0,'T':0}; self.shield_time=0; self.dash_inv_time=0; self.skill_waves=[]; self.star_bursts=[]; self.dash_trails=[]; self.audio.play_music(i+1)
     def present(self): self.display.blit(pygame.transform.smoothscale(self.screen,self.display.get_size()),(0,0)); pygame.display.flip()
@@ -526,6 +537,8 @@ class Game:
         boss_ok=not self.boss or not self.boss.alive
         if self.player.rect.colliderect(pygame.Rect(self.lvl['portal'])) and self.collected>=self.lvl['required_coins'] and boss_ok: self.audio.sound('portal'); self.start_question()
     def ui(self):
+        # HUD không khung lớn, toàn bộ cụm được căn giữa ngang màn hình.
+        # Xu được căn giữa theo dãy tim; thanh mana được căn giữa theo dòng Mana.
         top_y=12
         hearts_x=230
         heart_size=42
@@ -537,10 +550,14 @@ class Game:
         mana_bar_w=170
         skills_x=696
 
+        # 5 tim kích thước cũ.
         for i in range(MAX_HEALTH):
             self.screen.blit(self.hfull if i<self.player.health else self.hempty,(hearts_x+i*heart_step,top_y))
 
+        # Xu nằm giữa dãy tim.
         draw_outline_text(self.screen,self.f,f"Xu: {self.collected}/{self.lvl['required_coins']}",(255,255,255),(hearts_center,top_y+55),width=2,center=True)
+
+        # Mana thẳng hàng dọc với tim; chữ và thanh dùng cùng một tâm ngang.
         draw_outline_text(self.screen,self.f,f"Mana: {int(self.mana)}/{MAX_MANA}",(255,255,255),(mana_center,top_y+21),width=2,center=True)
         bar=pygame.Rect(mana_center-mana_bar_w//2,top_y+53,mana_bar_w,21)
         pygame.draw.rect(self.screen,(5,10,20),bar,border_radius=9)
@@ -552,6 +569,7 @@ class Game:
         pygame.draw.rect(self.screen,(0,0,0),bar,3,border_radius=9)
         pygame.draw.rect(self.screen,(245,185,65),bar,2,border_radius=9)
 
+        # Bốn ô skill ở bên phải, nền đen xanh rất nhẹ và trong suốt.
         skill_data=[('Q',SKILL_WAVE_COST,SKILL_WAVE_COOLDOWN),('E',SKILL_SHIELD_COST,SKILL_SHIELD_COOLDOWN),('R',SKILL_DASH_COST,SKILL_DASH_COOLDOWN),('T',SKILL_STORM_COST,SKILL_STORM_COOLDOWN)]
         box_w=49; box_h=54; gap=10; icon_y=top_y+29
         for i,(key,cost,max_cd) in enumerate(skill_data):
@@ -643,10 +661,13 @@ class Game:
 
 
 # ==============================================================================
-# VERCEL PYTHON WEB RUNTIME (WSGI ENTRYPOINT + HTML5 CANVAS PORT)
+# VERCEL PYTHON WEB RUNTIME (1:1 PYGAME-FAITHFUL HTML5 CANVAS ENGINE)
 # ==============================================================================
 def build_web_config():
-    with open(path('data/levels.json'), encoding='utf-8') as f:
+    levels_fp = path('data/levels.json')
+    if not os.path.exists(levels_fp):
+        levels_fp = path('levels.json')
+    with open(levels_fp, encoding='utf-8') as f:
         levels_data = json.load(f)['levels']
     for lvl in levels_data:
         lvl['background'] = '/' + (resolve_rel(lvl['background']) or lvl['background'])
@@ -693,66 +714,28 @@ WEB_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Badge Journey - Hành Trình Huy Hiệu Cổ Đại</title>
+<title>Badge Journey</title>
 <link rel="icon" href="/game_icon.ico" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-  body {
-    background: radial-gradient(circle at center, #161d2f 0%, #090c14 100%);
-    color: #fff;
-    font-family: Consolas, "Courier New", monospace;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    overflow: hidden;
-  }
-  #game-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75);
-    border: 2px solid rgba(245, 190, 75, 0.45);
-    border-radius: 8px;
-    overflow: hidden;
+  html, body {
+    width: 100vw;
+    height: 100vh;
     background: #000;
+    overflow: hidden;
+    font-family: Consolas, "Courier New", monospace;
   }
   canvas {
     display: block;
-    max-width: 100vw;
-    max-height: 92vh;
-    width: auto;
-    height: auto;
-    aspect-ratio: 1152 / 768;
+    width: 100vw;
+    height: 100vh;
     background: #000;
+    cursor: pointer;
   }
-  #hud-bar {
-    margin-top: 8px;
-    font-size: 13px;
-    color: #cbd5e1;
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  #hud-bar span b { color: #fde047; }
 </style>
 </head>
 <body>
-  <div id="game-wrap">
-    <canvas id="gameCanvas" width="1152" height="768"></canvas>
-  </div>
-  <div id="hud-bar">
-    <span><b>A/D, ←/→</b>: Di chuyển</span>
-    <span><b>W/↑/Space</b>: Nhảy (x2)</span>
-    <span><b>Tab/F</b>: Chém</span>
-    <span><b>Q/E/R/T</b>: Kỹ năng</span>
-    <span><b>F9/F10</b>: Tạm dừng/Tiếp tục</span>
-    <span><b>8/9</b>: Nhạc/Âm thanh</span>
-    <span><b>Enter</b>: Tiếp tục</span>
-  </div>
+  <canvas id="gameCanvas" width="1152" height="768"></canvas>
 <script>
 (async function() {
   const canvas = document.getElementById('gameCanvas');
@@ -763,13 +746,21 @@ WEB_HTML = """<!DOCTYPE html>
   const S = DATA.settings;
   const WIDTH = S.WIDTH, HEIGHT = S.HEIGHT, FPS = S.FPS;
 
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
   function loadImg(src) {
     const img = new Image();
     img.src = src;
     return img;
   }
 
-  function loadVid(src) {
+  function createSceneVideo(src) {
     const v = document.createElement('video');
     v.src = src;
     v.muted = true;
@@ -785,9 +776,9 @@ WEB_HTML = """<!DOCTYPE html>
     tutorialImg: loadImg('/assets/scenes/tutorial.png'),
     endingImg: loadImg('/assets/scenes/ending.png'),
     videos: {
-      opening: loadVid('/assets/scenes/opening.mp4'),
-      tutorial: loadVid('/assets/scenes/tutorial.mp4'),
-      ending: loadVid('/assets/scenes/ending.mp4')
+      opening: createSceneVideo('/assets/scenes/opening.mp4'),
+      tutorial: createSceneVideo('/assets/scenes/tutorial.mp4'),
+      ending: createSceneVideo('/assets/scenes/ending.mp4')
     },
     hfull: loadImg('/assets/ui/heart_full.png'),
     hempty: loadImg('/assets/ui/heart_empty.png'),
@@ -820,16 +811,39 @@ WEB_HTML = """<!DOCTYPE html>
     bgs: DATA.levels.map(l => loadImg(l.background))
   };
 
+  function swapMp3Case(url) {
+    if (url.endsWith('.mp3')) return url.slice(0, -4) + '.MP3';
+    if (url.endsWith('.MP3')) return url.slice(0, -4) + '.mp3';
+    return url;
+  }
+
   class WebAudio {
     constructor() {
       this.musicEnabled = true;
       this.soundEnabled = true;
       this.currentTrack = null;
+      this.unlocked = false;
       this.bgm = new Audio();
       this.bgm.loop = true;
+      this.bgm.preload = 'auto';
+      this.bgm.addEventListener('error', () => {
+        if (!this.bgm._retried && this.currentTrack) {
+          this.bgm._retried = true;
+          this.bgm.src = swapMp3Case(this.currentTrack);
+          if (this.musicEnabled) this.bgm.play().catch(() => {});
+        }
+      });
       this.sounds = {};
       for (const [k, url] of Object.entries(DATA.sound_files)) {
         this.sounds[k] = url;
+      }
+    }
+    unlock() {
+      if (this.musicEnabled && this.bgm.src && this.bgm.paused) {
+        this.bgm.play().then(() => { this.unlocked = true; }).catch(() => {});
+      }
+      for (const v of Object.values(assets.videos)) {
+        if (v && v.paused) v.play().catch(() => {});
       }
     }
     playMusic(name) {
@@ -837,28 +851,151 @@ WEB_HTML = """<!DOCTYPE html>
       if (!rel) return;
       if (this.currentTrack === rel && !this.bgm.paused) return;
       this.currentTrack = rel;
+      this.bgm._retried = false;
       this.bgm.src = rel;
-      if (this.musicEnabled) {
-        this.bgm.play().catch(() => {});
-      }
+      if (!this.musicEnabled) return;
+      this.bgm.play().then(() => { this.unlocked = true; }).catch(() => {
+        this.unlocked = false;
+      });
     }
     toggleMusic() {
       this.musicEnabled = !this.musicEnabled;
-      if (!this.musicEnabled) this.bgm.pause();
-      else if (this.currentTrack) this.bgm.play().catch(() => {});
+      if (!this.musicEnabled) {
+        this.bgm.pause();
+      } else {
+        this.currentTrack = null;
+      }
     }
     toggleSound() {
       this.soundEnabled = !this.soundEnabled;
     }
     sound(k) {
       if (!this.soundEnabled || !this.sounds[k]) return;
-      const a = new Audio(this.sounds[k]);
+      const url = this.sounds[k];
+      const a = new Audio(url);
+      a.addEventListener('error', () => {
+        if (!a._retried) {
+          a._retried = true;
+          a.src = swapMp3Case(url);
+          a.play().catch(() => {});
+        }
+      });
       a.play().catch(() => {});
     }
   }
 
   const audio = new WebAudio();
   const keys = {};
+
+  ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(ev => {
+    window.addEventListener(ev, () => audio.unlock(), { passive: true });
+  });
+
+  // ============================================================================
+  // PYGAME-EXACT DRAWING HELPERS (ELLIPTICAL ARCS, SURFACES, ROUNDED RECTS)
+  // ============================================================================
+  function pygameDrawArc(targetCtx, color, rx, ry, rw, rh, startRad, stopRad, width) {
+    targetCtx.save();
+    const ecx = rx + rw / 2;
+    const ecy = ry + rh / 2;
+    const radX = Math.max(1, rw / 2 - width / 2);
+    const radY = Math.max(1, rh / 2 - width / 2);
+    targetCtx.beginPath();
+    targetCtx.ellipse(ecx, ecy, radX, radY, 0, -stopRad, -startRad, false);
+    targetCtx.strokeStyle = color;
+    targetCtx.lineWidth = width;
+    targetCtx.lineCap = 'butt';
+    targetCtx.stroke();
+    targetCtx.restore();
+  }
+
+  function pygameDrawLine(targetCtx, color, x1, y1, x2, y2, width) {
+    targetCtx.save();
+    targetCtx.beginPath();
+    targetCtx.moveTo(x1, y1);
+    targetCtx.lineTo(x2, y2);
+    targetCtx.strokeStyle = color;
+    targetCtx.lineWidth = width;
+    targetCtx.lineCap = 'butt';
+    targetCtx.stroke();
+    targetCtx.restore();
+  }
+
+  // Tương đương chính xác hàm make_attack_wave_surface() (86x126) trong main.py
+  const attackWaveCanvas = document.createElement('canvas');
+  attackWaveCanvas.width = 86;
+  attackWaveCanvas.height = 126;
+  (function buildAttackWave() {
+    const c = attackWaveCanvas.getContext('2d');
+    pygameDrawArc(c, 'rgba(255,255,235,1.0)', 8, 5, 48, 112, -1.35, 1.35, 11);
+    pygameDrawArc(c, 'rgba(255,190,45,0.98)', 16, 11, 42, 100, -1.25, 1.25, 7);
+    pygameDrawArc(c, 'rgba(255,110,25,0.94)', 26, 19, 31, 84, -1.10, 1.10, 4);
+    pygameDrawLine(c, 'rgba(255,255,255,1.0)', 54, 22, 62, 104, 4);
+  })();
+
+  // Tương đương chính xác bề mặt StarBladeBurst (230x230) trong main.py
+  const starBurstCanvas = document.createElement('canvas');
+  starBurstCanvas.width = 230;
+  starBurstCanvas.height = 230;
+  (function buildStarBurst() {
+    const c = starBurstCanvas.getContext('2d');
+    for (const angle of [45, 135, 225, 315]) {
+      const r = (angle * Math.PI) / 180;
+      const x = 115 + Math.trunc(Math.cos(r) * 35);
+      const y = 115 - Math.trunc(Math.sin(r) * 35);
+      c.save();
+      c.translate(x, y);
+      // pygame.transform.rotate(base, angle - 90) xoay ngược chiều kim đồng hồ
+      c.rotate(-((angle - 90) * Math.PI) / 180);
+      c.drawImage(attackWaveCanvas, -38, -56, 76, 112);
+      c.restore();
+    }
+    c.beginPath();
+    c.arc(115, 115, 16, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(255,245,175,0.96)';
+    c.fill();
+
+    c.beginPath();
+    c.arc(115, 115, 25, 0, Math.PI * 2);
+    c.strokeStyle = 'rgba(255,190,45,0.86)';
+    c.lineWidth = 4;
+    c.stroke();
+  })();
+
+  // Offscreen canvas cho Player.draw_sword_wave (78x124)
+  const swordWaveCanvas = document.createElement('canvas');
+  swordWaveCanvas.width = 78;
+  swordWaveCanvas.height = 124;
+  const swordWaveCtx = swordWaveCanvas.getContext('2d');
+
+  // Offscreen canvas để tô đỏ quái khi trúng đòn (Enemy.draw hit>0)
+  const hitTintCanvas = document.createElement('canvas');
+  hitTintCanvas.width = 64;
+  hitTintCanvas.height = 64;
+  const hitTintCtx = hitTintCanvas.getContext('2d');
+
+  function fillRoundRect(x, y, w, h, radius, color) {
+    if (w <= 0 || h <= 0) return;
+    const r = Math.min(radius, w / 2, h / 2);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function strokeRoundRect(x, y, w, h, radius, color, lineWidth = 1) {
+    if (w <= 0 || h <= 0) return;
+    const r = Math.min(radius, w / 2, h / 2);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   function rectsOverlap(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -868,23 +1005,38 @@ WEB_HTML = """<!DOCTYPE html>
     return { x: arr[0], y: arr[1], w: arr[2], h: arr[3] };
   }
 
-  function drawOutlineText(text, size, color, x, y, outline = '#000', width = 2, center = false) {
+  // Tương đương chính xác hàm draw_outline_text() trong main.py
+  function drawOutlineText(text, sz, color, x, y, outline = 'rgb(0,0,0)', width = 1, center = false) {
     ctx.save();
-    ctx.font = `bold ${size}px Consolas, monospace`;
+    ctx.font = `bold ${sz}px Consolas, "Courier New", monospace`;
     ctx.textAlign = center ? 'center' : 'left';
     ctx.textBaseline = center ? 'middle' : 'top';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = width * 2;
-    ctx.strokeStyle = outline;
-    ctx.strokeText(text, x, y);
+    ctx.fillStyle = outline;
+    for (let ox = -width; ox <= width; ox++) {
+      for (let oy = -width; oy <= width; oy++) {
+        if ((ox !== 0 || oy !== 0) && (ox * ox + oy * oy <= width * width)) {
+          ctx.fillText(text, x + ox, y + oy);
+        }
+      }
+    }
     ctx.fillStyle = color;
     ctx.fillText(text, x, y);
     ctx.restore();
   }
 
-  function wrapLines(text, size, maxWidth) {
+  function drawPlainText(text, sz, color, x, y, center = false) {
     ctx.save();
-    ctx.font = `bold ${size}px Consolas, monospace`;
+    ctx.font = `bold ${sz}px Consolas, "Courier New", monospace`;
+    ctx.textAlign = center ? 'center' : 'left';
+    ctx.textBaseline = center ? 'middle' : 'top';
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  function wrapLines(text, sz, maxWidth) {
+    ctx.save();
+    ctx.font = `bold ${sz}px Consolas, "Courier New", monospace`;
     const words = String(text).split(' ');
     const lines = [];
     let current = '';
@@ -902,45 +1054,24 @@ WEB_HTML = """<!DOCTYPE html>
     return lines;
   }
 
-  function drawWrappedText(text, size, color, x, y, maxWidth, lineGap = 6, center = false) {
-    const lines = wrapLines(text, size, maxWidth);
+  function drawWrappedText(text, sz, color, x, y, maxWidth, lineGap = 6, center = false) {
+    const lines = wrapLines(text, sz, maxWidth);
     ctx.save();
-    ctx.font = `bold ${size}px Consolas, monospace`;
+    ctx.font = `bold ${sz}px Consolas, "Courier New", monospace`;
     ctx.fillStyle = color;
     ctx.textBaseline = 'top';
     for (const line of lines) {
       if (center) {
         ctx.textAlign = 'center';
-        ctx.fillText(line, x + maxWidth / 2, y);
+        ctx.fillText(line, x + Math.floor(maxWidth / 2), y);
       } else {
         ctx.textAlign = 'left';
         ctx.fillText(line, x, y);
       }
-      y += size + lineGap;
+      y += sz + lineGap;
     }
     ctx.restore();
     return y;
-  }
-
-  function drawWaveArc(cx, cy, facing, alpha = 1.0, scale = 1.0) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(facing * scale, scale);
-    ctx.globalAlpha = alpha;
-    const arcs = [
-      { r: 44, w: 11, c: 'rgba(255,255,235,0.95)' },
-      { r: 36, w: 7,  c: 'rgba(255,190,45,0.95)' },
-      { r: 28, w: 4,  c: 'rgba(255,115,25,0.95)' }
-    ];
-    for (const a of arcs) {
-      ctx.beginPath();
-      ctx.arc(-8, 0, a.r, -1.25, 1.25);
-      ctx.strokeStyle = a.c;
-      ctx.lineWidth = a.w;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-    }
-    ctx.restore();
   }
 
   class Player {
@@ -1011,6 +1142,28 @@ WEB_HTML = """<!DOCTYPE html>
       this.rect.x = Math.max(-20, Math.min(WIDTH - 25, this.rect.x));
       this.x = this.rect.x;
     }
+    drawSwordWave() {
+      // Tương đương 100% Player.draw_sword_wave(self, screen) trong main.py
+      const progress = (S.ATTACK_TIME - this.attack) / Math.max(1, S.ATTACK_TIME);
+      const alpha = Math.max(185, Math.trunc(255 * (1 - progress * 0.25))) / 255;
+      swordWaveCtx.clearRect(0, 0, 78, 124);
+      const cx = 22 + Math.trunc(progress * 10);
+      const cy = 62;
+      pygameDrawArc(swordWaveCtx, `rgba(255,255,235,${alpha})`, cx - 10, cy - 56, 42, 112, -1.35, 1.35, 11);
+      pygameDrawArc(swordWaveCtx, `rgba(255,190,45,${alpha})`, cx - 2, cy - 50, 34, 100, -1.25, 1.25, 7);
+      pygameDrawArc(swordWaveCtx, `rgba(255,115,25,${alpha})`, cx + 7, cy - 42, 24, 84, -1.10, 1.10, 4);
+      pygameDrawLine(swordWaveCtx, `rgba(255,255,255,${alpha})`, cx + 25, cy - 42, cx + 30, cy + 42, 4);
+
+      if (this.facing === 1) {
+        ctx.drawImage(swordWaveCanvas, this.rect.x + this.rect.w + 5, this.rect.y - 36);
+      } else {
+        ctx.save();
+        ctx.translate(this.rect.x - 83 + 78, this.rect.y - 36);
+        ctx.scale(-1, 1);
+        ctx.drawImage(swordWaveCanvas, 0, 0);
+        ctx.restore();
+      }
+    }
     draw() {
       if (this.inv > 0 && Math.floor(this.inv / 5) % 2 === 0) return;
       const key = (this.facing === 1 && this.attack > 0) ? 'ar'
@@ -1020,12 +1173,10 @@ WEB_HTML = """<!DOCTYPE html>
       const w = (key === 'ar' || key === 'al') ? 78 : 56;
       const h = 62;
       if (img && img.complete) {
-        ctx.drawImage(img, this.rect.x + this.rect.w / 2 - w / 2, this.rect.y + this.rect.h - h, w, h);
+        ctx.drawImage(img, Math.round(this.rect.x + this.rect.w / 2 - w / 2), this.rect.y + this.rect.h - h, w, h);
       }
       if (this.attack > 0) {
-        const cx = this.facing === 1 ? this.rect.x + this.rect.w + 26 : this.rect.x - 26;
-        const cy = this.rect.y + this.rect.h / 2;
-        drawWaveArc(cx, cy, this.facing, 0.92, 1.0);
+        this.drawSwordWave();
       }
     }
   }
@@ -1050,6 +1201,15 @@ WEB_HTML = """<!DOCTYPE html>
     starBursts: [],
     dashTrails: [],
     startTicks: performance.now(),
+    musicForState() {
+      if (this.state === 'paused') return 'pause';
+      if (this.state === 'playing') return this.idx + 1;
+      if (this.state === 'question' || this.state === 'class_select') return 'question';
+      if (this.state === 'game_over') return 'game_over';
+      if (this.state === 'ending' || this.state === 'ending_wait') return 'ending';
+      if (this.state === 'tutorial') return 'tutorial';
+      return 'opening';
+    },
     loadLevel(i) {
       this.idx = i;
       this.lvl = JSON.parse(JSON.stringify(DATA.levels[i]));
@@ -1161,8 +1321,9 @@ WEB_HTML = """<!DOCTYPE html>
     useSkill(key) {
       if (key === 'Q' && this.spendMana(S.SKILL_WAVE_COST, key)) {
         const x = this.player.facing > 0 ? this.player.rect.x + this.player.rect.w : this.player.rect.x - 74;
+        const y = Math.round(this.player.rect.y + this.player.rect.h / 2) - 50;
         this.skillWaves.push({
-          rect: { x, y: this.player.rect.y + this.player.rect.h / 2 - 50, w: 74, h: 100 },
+          rect: { x, y, w: 74, h: 100 },
           x, d: this.player.facing, travel: 0, hitIds: new Set(), alive: true
         });
         this.cooldowns.Q = S.SKILL_WAVE_COOLDOWN;
@@ -1199,8 +1360,8 @@ WEB_HTML = """<!DOCTYPE html>
       } else if (key === 'T' && this.spendMana(S.SKILL_STORM_COST, key)) {
         this.cooldowns.T = S.SKILL_STORM_COOLDOWN;
         audio.sound('skill_storm');
-        const cx = this.player.rect.x + this.player.rect.w / 2 + this.player.facing * 68;
-        const cy = this.player.rect.y + this.player.rect.h / 2;
+        const cx = Math.round(this.player.rect.x + this.player.rect.w / 2) + this.player.facing * 68;
+        const cy = Math.round(this.player.rect.y + this.player.rect.h / 2);
         this.starBursts.push({
           cx, cy, d: this.player.facing, rotation: 0, alive: true, hitIds: new Set(),
           rect: { x: cx - 110, y: cy - 110, w: 220, h: 220 }
@@ -1215,11 +1376,17 @@ WEB_HTML = """<!DOCTYPE html>
 
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
-    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) {
+    audio.unlock();
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'F11', 'F9', 'F10'].includes(e.code)) {
       e.preventDefault();
+    }
+    if (e.code === 'F11') {
+      toggleFullscreen();
+      return;
     }
     if (e.code === 'Digit8') {
       audio.toggleMusic();
+      audio.playMusic(game.musicForState());
     } else if (e.code === 'Digit9') {
       audio.toggleSound();
     } else if (e.code === 'F9' && game.state === 'playing') {
@@ -1230,6 +1397,7 @@ WEB_HTML = """<!DOCTYPE html>
       audio.playMusic(game.idx + 1);
     } else if (game.state === 'opening' && (e.code === 'Enter' || e.code === 'Tab')) {
       game.state = 'tutorial';
+      if (assets.videos.tutorial) { assets.videos.tutorial.currentTime = 0; assets.videos.tutorial.play().catch(() => {}); }
       audio.playMusic('tutorial');
     } else if (game.state === 'tutorial' && (e.code === 'Enter' || e.code === 'Tab')) {
       game.state = 'class_select';
@@ -1245,13 +1413,15 @@ WEB_HTML = """<!DOCTYPE html>
       game.state = 'ending_wait';
     } else if (game.state === 'ending_wait' && e.code === 'Enter') {
       game.state = 'opening';
+      if (assets.videos.opening) { assets.videos.opening.currentTime = 0; assets.videos.opening.play().catch(() => {}); }
       audio.playMusic('opening');
-    } else if (game.state === 'game_over' && (e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === 'Enter')) {
+    } else if (game.state === 'game_over' && (e.code === 'ControlLeft' || e.code === 'ControlRight')) {
       game.state = 'playing';
       game.loadLevel(game.idx);
     } else if (game.state === 'victory' && e.code === 'Enter') {
       if (game.idx >= 9) {
         game.state = 'ending';
+        if (assets.videos.ending) { assets.videos.ending.currentTime = 0; assets.videos.ending.play().catch(() => {}); }
         audio.playMusic('ending');
       } else {
         game.state = 'playing';
@@ -1426,34 +1596,57 @@ WEB_HTML = """<!DOCTYPE html>
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
     }
+    // Nếu trình duyệt chặn tự phát nhạc trước khi người dùng click chuột lần đầu, hiện nhắc nhở nhỏ ở góc (20,20)
+    if (audio.musicEnabled && !audio.unlocked && audio.bgm.paused) {
+      fillRoundRect(20, 20, 470, 38, 6, 'rgba(0,0,0,0.68)');
+      drawPlainText('Nhấn chuột vào màn hình để bật nhạc nền (F11: Toàn màn hình)', 15, '#fff', 32, 31, false);
+    }
   }
 
+  // Tương đương chính xác hàm Game.ui() trong main.py
   function drawUI() {
-    const topY = 12, heartsX = 230, heartStep = 46;
-    const heartsCenter = heartsX + ((S.MAX_HEALTH - 1) * heartStep + 42) / 2;
-    const manaCenter = 576, manaBarW = 170, skillsX = 696;
+    const topY = 12;
+    const heartsX = 230;
+    const heartSize = 42;
+    const heartStep = 46;
+    const heartsWidth = (S.MAX_HEALTH - 1) * heartStep + heartSize;
+    const heartsCenter = heartsX + Math.floor(heartsWidth / 2);
+
+    const manaCenter = 576;
+    const manaBarW = 170;
+    const skillsX = 696;
 
     for (let i = 0; i < S.MAX_HEALTH; i++) {
       const img = i < game.player.health ? assets.hfull : assets.hempty;
       if (img && img.complete) ctx.drawImage(img, heartsX + i * heartStep, topY, 42, 42);
     }
-    drawOutlineText(`Xu: ${game.collected}/${game.lvl.required_coins}`, 26, '#fff', heartsCenter, topY + 55, '#000', 2, true);
-    drawOutlineText(`Mana: ${Math.floor(game.mana)}/${S.MAX_MANA}`, 26, '#fff', manaCenter, topY + 21, '#000', 2, true);
 
-    const bx = manaCenter - manaBarW / 2, by = topY + 53, bw = manaBarW, bh = 21;
-    ctx.fillStyle = '#050a14';
-    ctx.fillRect(bx, by, bw, bh);
-    const ratio = Math.max(0, Math.min(1, game.mana / S.MAX_MANA));
-    const iw = Math.floor((bw - 6) * ratio);
-    if (iw > 0) {
-      ctx.fillStyle = (game.manaFlash > 0 && Math.floor(game.manaFlash / 4) % 2 === 0) ? '#ff4646'
-                    : (game.mana < 20) ? '#a52d91'
-                    : (game.mana <= 50) ? '#23bee0' : '#1973ee';
-      ctx.fillRect(bx + 3, by + 3, iw, bh - 6);
+    drawOutlineText(`Xu: ${game.collected}/${game.lvl.required_coins}`, 25, '#fff', heartsCenter, topY + 55, '#000', 2, true);
+    drawOutlineText(`Mana: ${Math.trunc(game.mana)}/${S.MAX_MANA}`, 25, '#fff', manaCenter, topY + 21, '#000', 2, true);
+
+    const barX = manaCenter - Math.floor(manaBarW / 2);
+    const barY = topY + 53;
+    const barW = manaBarW;
+    const barH = 21;
+    fillRoundRect(barX, barY, barW, barH, 9, 'rgb(5,10,20)');
+
+    const innerX = barX + 3;
+    const innerY = barY + 3;
+    const innerH = barH - 6;
+    const innerW = Math.trunc((barW - 6) * Math.max(0, Math.min(1, game.mana / S.MAX_MANA)));
+    const barColor = (game.manaFlash > 0 && Math.floor(game.manaFlash / 4) % 2 === 0) ? 'rgb(255,70,70)'
+                   : (game.mana < 20) ? 'rgb(165,45,145)'
+                   : (game.mana <= 50) ? 'rgb(35,190,224)' : 'rgb(25,115,238)';
+    if (innerW > 0) {
+      fillRoundRect(innerX, innerY, innerW, innerH, 6, barColor);
+      const shineW = Math.max(0, innerW - 4);
+      const shineH = Math.max(2, Math.floor(innerH / 3));
+      if (shineW > 0) {
+        fillRoundRect(innerX + 2, innerY + 1, shineW, shineH, 4, 'rgb(165,240,255)');
+      }
     }
-    ctx.strokeStyle = '#f5b941';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(bx, by, bw, bh);
+    strokeRoundRect(barX, barY, barW, barH, 9, 'rgb(0,0,0)', 3);
+    strokeRoundRect(barX, barY, barW, barH, 9, 'rgb(245,185,65)', 2);
 
     const skillData = [
       ['Q', S.SKILL_WAVE_COST, S.SKILL_WAVE_COOLDOWN],
@@ -1464,130 +1657,155 @@ WEB_HTML = """<!DOCTYPE html>
     const boxW = 49, boxH = 54, gap = 10, iconY = topY + 29;
     skillData.forEach(([key, cost, maxCd], i) => {
       const x = skillsX + i * (boxW + gap);
-      drawOutlineText(key, 16, '#ffeb78', x + boxW / 2, topY + 7, '#000', 1, true);
-      ctx.fillStyle = 'rgba(8, 14, 28, 0.45)';
-      ctx.fillRect(x, iconY, boxW, boxH);
-      ctx.strokeStyle = 'rgba(245, 190, 75, 0.7)';
-      ctx.strokeRect(x, iconY, boxW, boxH);
+      drawOutlineText(key, 15, 'rgb(255,235,120)', x + Math.floor(boxW / 2), topY + 7, '#000', 1, true);
+      fillRoundRect(x, iconY, boxW, boxH, 8, 'rgba(8,14,28,0.32)');
+      strokeRoundRect(x, iconY, boxW, boxH, 8, 'rgba(245,190,75,0.59)', 1);
       const ic = assets.skills[key];
       if (ic && ic.complete) ctx.drawImage(ic, x + 3, iconY + 2, 42, 42);
       const cd = game.cooldowns[key];
       if (cd > 0) {
-        const darkH = Math.max(1, Math.floor(42 * (cd / maxCd)));
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        const ratio = Math.max(0, Math.min(1, cd / maxCd));
+        const darkH = Math.max(1, Math.trunc(42 * ratio));
+        ctx.fillStyle = 'rgba(0,0,0,0.51)';
         ctx.fillRect(x + 3, iconY + 2 + 42 - darkH, 42, darkH);
-        drawOutlineText((cd / FPS).toFixed(1), 16, '#fff', x + boxW / 2, iconY + 23, '#000', 2, true);
+        drawOutlineText((cd / FPS).toFixed(1), 16, '#fff', x + Math.floor(boxW / 2), iconY + 23, '#000', 2, true);
       }
-      drawOutlineText(String(cost), 13, '#91e1ff', x + boxW / 2, iconY + 48, '#000', 1, true);
+      drawPlainText(String(cost), 13, 'rgb(145,225,255)', x + Math.floor(boxW / 2), iconY + 48, true);
     });
 
     if (game.skillMsgTime > 0) {
-      drawOutlineText(game.skillMsg, 32, '#fff', WIDTH / 2, 676, '#000', 2, true);
+      drawOutlineText(game.skillMsg, 31, '#fff', WIDTH / 2, 676, '#000', 2, true);
     }
     if (game.idx === 9 && game.boss && game.boss.hp > 0) {
-      drawOutlineText(`BOSS RỒNG LỬA: ${game.boss.hp}/30`, 23, '#ffe6aa', WIDTH / 2, 126, '#000', 2, true);
+      drawOutlineText(`BOSS RỒNG LỬA: ${game.boss.hp}/30`, 21, 'rgb(255,230,170)', WIDTH / 2, 126, '#000', 2, true);
+    }
+  }
+
+  function drawEnemy(en) {
+    const img = assets.enemies[en.type] || assets.enemies.slime;
+    if (img && img.complete) {
+      const drawX = Math.round(en.rect.x + en.rect.w / 2 - 27);
+      const drawY = en.rect.y + en.rect.h - 54;
+      if (en.hit > 0) {
+        hitTintCtx.clearRect(0, 0, 54, 54);
+        hitTintCtx.save();
+        if (en.dir < 0) {
+          hitTintCtx.translate(54, 0);
+          hitTintCtx.scale(-1, 1);
+        }
+        hitTintCtx.drawImage(img, 0, 0, 54, 54);
+        hitTintCtx.globalCompositeOperation = 'source-atop';
+        hitTintCtx.fillStyle = 'rgba(255,80,80,0.35)';
+        hitTintCtx.fillRect(0, 0, 54, 54);
+        hitTintCtx.restore();
+        ctx.drawImage(hitTintCanvas, 0, 0, 54, 54, drawX, drawY, 54, 54);
+      } else {
+        ctx.save();
+        if (en.dir < 0) {
+          ctx.translate(drawX + 54, drawY);
+          ctx.scale(-1, 1);
+          ctx.drawImage(img, 0, 0, 54, 54);
+        } else {
+          ctx.drawImage(img, drawX, drawY, 54, 54);
+        }
+        ctx.restore();
+      }
+    }
+    if (en.hp < en.maxHp) {
+      ctx.fillStyle = 'rgb(60,0,0)';
+      ctx.fillRect(en.rect.x, en.rect.y - 8, en.rect.w, 5);
+      ctx.fillStyle = 'rgb(255,70,70)';
+      ctx.fillRect(en.rect.x, en.rect.y - 8, Math.trunc(en.rect.w * en.hp / en.maxHp), 5);
     }
   }
 
   function drawPlaying() {
     const bg = assets.bgs[game.idx];
     if (bg && bg.complete) ctx.drawImage(bg, 0, 0, WIDTH, HEIGHT);
-    else { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, WIDTH, HEIGHT); }
+    else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, WIDTH, HEIGHT); }
 
     for (const c of game.coins) {
       if (!c.got && assets.coin.complete) ctx.drawImage(assets.coin, c.rect.x, c.rect.y, 34, 34);
     }
 
-    for (const en of game.enemies) {
-      const img = assets.enemies[en.type] || assets.enemies.slime;
-      if (img && img.complete) {
-        ctx.save();
-        const cx = en.rect.x + en.rect.w / 2;
-        const bottom = en.rect.y + en.rect.h;
-        ctx.translate(cx, bottom - 27);
-        if (en.dir < 0) ctx.scale(-1, 1);
-        ctx.drawImage(img, -27, -27, 54, 54);
-        ctx.restore();
-      }
-      if (en.hp < en.maxHp) {
-        ctx.fillStyle = '#3c0000';
-        ctx.fillRect(en.rect.x, en.rect.y - 8, en.rect.w, 5);
-        ctx.fillStyle = '#ff4646';
-        ctx.fillRect(en.rect.x, en.rect.y - 8, Math.floor(en.rect.w * en.hp / en.maxHp), 5);
-      }
-    }
+    for (const en of game.enemies) drawEnemy(en);
 
     if (game.boss && game.boss.hp > 0) {
       const b = game.boss;
       if (assets.boss && assets.boss.complete) {
+        const drawX = Math.round(b.rect.x + b.rect.w / 2 - 120);
+        const drawY = b.rect.y + b.rect.h - 190;
         ctx.save();
-        const cx = b.rect.x + b.rect.w / 2;
-        const bottom = b.rect.y + b.rect.h;
-        ctx.translate(cx, bottom - 95);
-        if (b.dir > 0) ctx.scale(-1, 1);
-        ctx.drawImage(assets.boss, -120, -95, 240, 190);
+        if (b.dir > 0) {
+          ctx.translate(drawX + 240, drawY);
+          ctx.scale(-1, 1);
+          ctx.drawImage(assets.boss, 0, 0, 240, 190);
+        } else {
+          ctx.drawImage(assets.boss, drawX, drawY, 240, 190);
+        }
         ctx.restore();
       }
       const fr = bossFireRect(b);
       if (fr.w > 0) {
-        ctx.fillStyle = 'rgba(255, 90, 0, 0.75)';
-        ctx.fillRect(fr.x, fr.y, fr.w, fr.h);
-        ctx.fillStyle = '#ffdc50';
-        ctx.fillRect(fr.x + 12, fr.y + 9, fr.w - 24, fr.h - 18);
+        fillRoundRect(fr.x, fr.y, fr.w, fr.h, 18, 'rgba(255,90,0,0.71)');
+        fillRoundRect(fr.x + 12, fr.y + 9, fr.w - 25, fr.h - 18, 12, 'rgb(255,220,80)');
       }
-      ctx.fillStyle = '#230000';
-      ctx.fillRect(281, 145, 590, 22);
-      ctx.fillStyle = '#ff3723';
-      ctx.fillRect(281, 145, Math.floor(590 * b.hp / b.maxHp), 22);
-      ctx.strokeStyle = '#ffdc78';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(281, 145, 590, 22);
+      fillRoundRect(281, 145, 590, 22, 6, 'rgb(35,0,0)');
+      fillRoundRect(281, 145, Math.trunc(590 * b.hp / b.maxHp), 22, 6, 'rgb(255,55,35)');
+      strokeRoundRect(281, 145, 590, 22, 6, 'rgb(255,220,120)', 3);
     }
 
+    // Dash trails (Chiêu R)
     for (const [r, life] of game.dashTrails) {
       const img = assets.player[game.player.facing > 0 ? 'r' : 'l'];
       if (img && img.complete) {
         ctx.save();
-        ctx.globalAlpha = 0.55 * (life / 24);
-        ctx.drawImage(img, r.x - 5, r.y - 7, 56, 62);
+        ctx.globalAlpha = Math.trunc(145 * life / 24) / 255;
+        ctx.drawImage(img, Math.round(r.x + r.w / 2 - 28), r.y + r.h - 62, 56, 62);
         ctx.restore();
       }
     }
 
+    // SkillWave (Chiêu Q)
     for (const p of game.skillWaves) {
-      drawWaveArc(p.rect.x + p.rect.w / 2, p.rect.y + p.rect.h / 2, p.d, 1.0, 1.05);
+      const cx = p.rect.x + p.rect.w / 2;
+      const cy = p.rect.y + p.rect.h / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      if (p.d < 0) ctx.scale(-1, 1);
+      ctx.drawImage(attackWaveCanvas, -43, -63, 86, 126);
+      ctx.restore();
     }
 
+    // StarBladeBurst (Chiêu T)
     for (const p of game.starBursts) {
+      const cx = p.rect.x + p.rect.w / 2;
+      const cy = p.rect.y + p.rect.h / 2;
       ctx.save();
-      ctx.translate(p.cx, p.cy);
-      ctx.rotate((p.rotation * Math.PI) / 180);
-      for (const ang of [45, 135, 225, 315]) {
-        ctx.save();
-        ctx.rotate((ang * Math.PI) / 180);
-        drawWaveArc(35, 0, 1, 0.95, 0.85);
-        ctx.restore();
-      }
-      ctx.beginPath();
-      ctx.arc(0, 0, 16, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,245,175,0.95)';
-      ctx.fill();
+      ctx.translate(cx, cy);
+      // pygame.transform.rotate(s, self.rotation) xoay ngược chiều kim đồng hồ
+      ctx.rotate(-(p.rotation * Math.PI) / 180);
+      ctx.drawImage(starBurstCanvas, -115, -115, 230, 230);
       ctx.restore();
     }
 
     game.player.draw();
 
+    // Shield (Chiêu E)
     if (game.shieldTime > 0 && assets.shield.complete) {
       ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(assets.shield, game.player.rect.x - 4, game.player.rect.y + 8, 54, 54);
+      const alpha = (210 + Math.trunc(45 * Math.abs(Math.sin(performance.now() / 120)))) / 255;
+      ctx.globalAlpha = Math.min(1, alpha);
+      const scx = game.player.rect.x + game.player.rect.w / 2;
+      const scy = game.player.rect.y + game.player.rect.h / 2 + 13;
+      ctx.drawImage(assets.shield, Math.round(scx - 27), Math.round(scy - 27), 54, 54);
       ctx.restore();
     }
 
     drawUI();
 
     if (performance.now() - game.startTicks < 2000) {
-      drawOutlineText(`Màn ${game.idx + 1}: ${game.lvl.title}`, 52, '#fff', WIDTH / 2, HEIGHT / 2, '#000', 3, true);
+      drawOutlineText(`Màn ${game.idx + 1}: ${game.lvl.title}`, 52, '#fff', WIDTH / 2, HEIGHT / 2, '#000', 2, true);
     }
 
     if (rectsOverlap(game.player.rect, toRect(game.lvl.portal))) {
@@ -1597,15 +1815,17 @@ WEB_HTML = """<!DOCTYPE html>
       } else if (game.collected < game.lvl.required_coins) {
         msg = 'Chưa đủ xu để qua màn!';
       }
-      if (msg) drawOutlineText(msg, 32, '#fff', WIDTH / 2, 610, '#000', 2, true);
+      if (msg) drawOutlineText(msg, 33, '#fff', WIDTH / 2, 610, '#000', 1, true);
     }
   }
 
+  // Tương đương chính xác hàm Game.overlay_text() trong main.py
   function overlayText(title, msg, color) {
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    drawOutlineText(title, 56, color, WIDTH / 2, 285, '#000', 3, true);
-    drawOutlineText(msg, 28, '#fff', WIDTH / 2, 360, '#000', 2, true);
+    drawPlainText(title, 52, '#000', WIDTH / 2 + 4, 285 + 4, true);
+    drawPlainText(title, 52, color, WIDTH / 2, 285, true);
+    drawPlainText(msg, 25, '#fff', WIDTH / 2, 360, true);
   }
 
   function render() {
@@ -1616,39 +1836,39 @@ WEB_HTML = """<!DOCTYPE html>
       drawScene('tutorial');
     } else if (game.state === 'class_select') {
       drawScene('tutorial');
-      ctx.fillStyle = 'rgba(0,0,0,0.68)';
+      ctx.fillStyle = 'rgba(0,0,0,0.67)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      drawOutlineText('CHỌN LỚP', 56, '#ffeb78', WIDTH / 2, 190, '#000', 3, true);
+      drawPlainText('CHỌN LỚP', 52, 'rgb(255,235,120)', WIDTH / 2, 190, true);
       const lines = [
         'Nhấn phím số để chọn gói câu hỏi:',
         '1 - Lớp 1', '2 - Lớp 2', '3 - Lớp 3', '4 - Lớp 4', '5 - Lớp 5',
         '8 - Bật/tắt nhạc nền', '9 - Bật/tắt âm thanh'
       ];
-      lines.forEach((l, i) => drawOutlineText(l, 28, '#fff', WIDTH / 2, 270 + i * 43, '#000', 2, true));
+      lines.forEach((l, i) => drawPlainText(l, 25, '#fff', WIDTH / 2, 270 + i * 43, true));
     } else if (game.state === 'playing') {
       drawPlaying();
     } else if (game.state === 'question') {
       drawPlaying();
-      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      ctx.fillStyle = 'rgba(0,0,0,0.71)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
       const q = game.currentQuestion();
-      drawOutlineText('TRẢ LỜI CÂU HỎI ĐỂ QUA MÀN', 44, '#ffdc46', WIDTH / 2, 105, '#000', 3, true);
-      let y = drawWrappedText(`Câu ${game.idx + 1} - Lớp ${game.grade}: ${q.q}`, 28, '#fff', 110, 190, WIDTH - 220, 9, true) + 28;
+      drawPlainText('TRẢ LỜI CÂU HỎI ĐỂ QUA MÀN', 42, 'rgb(255,220,70)', WIDTH / 2, 105, true);
+      let y = drawWrappedText(`Câu ${game.idx + 1} - Lớp ${game.grade}: ${q.q}`, 25, '#fff', 110, 190, WIDTH - 220, 9, true) + 28;
       const labels = ['1/A', '2/B', '3/C', '4/D'];
       const [fbI, fbOk] = game.questionFeedback || [null, null];
       q.opts.forEach((opt, i) => {
-        const c = (fbI === i && fbOk) ? '#46ff5a' : (fbI === i) ? '#ff4b4b' : '#fff';
-        y = drawWrappedText(`${labels[i]}. ${opt}`, 28, c, 195, y, WIDTH - 390, 6, false) + 9;
+        const c = (fbI === i && fbOk) ? 'rgb(70,255,90)' : (fbI === i) ? 'rgb(255,75,75)' : '#fff';
+        y = drawWrappedText(`${labels[i]}. ${opt}`, 25, c, 195, y, WIDTH - 390, 6, false) + 9;
       });
       let status, sc;
       if (game.questionFeedback) {
         status = fbOk ? ('Đúng! ' + q.exp) : 'SAI RỒI! HÃY CHỌN LẠI.';
-        sc = fbOk ? '#4bff64' : '#ff5f55';
+        sc = fbOk ? 'rgb(75,255,100)' : 'rgb(255,95,85)';
       } else {
         status = `BẠN CÒN ${2 - game.questionAttempts} LƯỢT TRẢ LỜI - NHẤN 1-4 HOẶC A-D`;
-        sc = '#ffe682';
+        sc = 'rgb(255,230,130)';
       }
-      drawWrappedText(status, 28, sc, 125, Math.max(y + 20, 555), WIDTH - 250, 7, true);
+      drawWrappedText(status, 25, sc, 125, Math.max(y + 20, 555), WIDTH - 250, 7, true);
     } else if (game.state === 'paused') {
       drawPlaying();
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
@@ -1659,20 +1879,20 @@ WEB_HTML = """<!DOCTYPE html>
         `Bấm phím 8 để ${audio.musicEnabled ? 'tắt' : 'mở'} nhạc nền`,
         `Bấm phím 9 để ${audio.soundEnabled ? 'tắt' : 'mở'} âm thanh`
       ];
-      lines.forEach((l, i) => drawOutlineText(l, i === 0 ? 56 : 28, i === 0 ? '#ffe65a' : '#fff', WIDTH / 2, 230 + i * 70, '#000', 2, true));
+      lines.forEach((l, i) => drawPlainText(l, i === 0 ? 52 : 25, i === 0 ? 'rgb(255,230,90)' : '#fff', WIDTH / 2, 230 + i * 70, true));
     } else if (game.state === 'victory') {
       drawPlaying();
-      overlayText('CHIẾN THẮNG!', 'Nhấn ENTER để tiếp tục', '#ffe150');
+      overlayText('CHIẾN THẮNG!', 'Nhấn ENTER để tiếp tục', 'rgb(255,225,80)');
     } else if (game.state === 'game_over') {
       drawPlaying();
-      overlayText('GAME OVER', 'Nhấn CTRL hoặc ENTER để chơi lại màn này', '#ff2d2d');
+      overlayText('GAME OVER', 'Nhấn CTRL để chơi lại màn này', 'rgb(255,45,45)');
     } else if (game.state === 'ending') {
       drawScene('ending');
     } else if (game.state === 'ending_wait') {
       drawScene('ending');
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(0,0,0,0.59)';
       ctx.fillRect(0, 648, WIDTH, 120);
-      drawOutlineText('Bấm Phím Enter để chơi lại', 28, '#fff578', WIDTH / 2, 705, '#000', 2, true);
+      drawPlainText('Bấm Phím Enter để chơi lại', 25, 'rgb(255,245,120)', WIDTH / 2, 705, true);
     }
   }
 
@@ -1718,11 +1938,4 @@ if _HAS_FLASK:
         return send_file(fp, conditional=True)
 
 
-if __name__=='__main__':
-    if '--web' in sys.argv:
-        from wsgiref.simple_server import make_server
-        print('Serving Badge Journey Web on http://127.0.0.1:8000 ...')
-        with make_server('0.0.0.0', 8000, app) as httpd:
-            httpd.serve_forever()
-    else:
-        Game().run()
+if __name__=='__main__': Game().run()
