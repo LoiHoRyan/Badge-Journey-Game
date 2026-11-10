@@ -15,7 +15,14 @@
     },
     {
       "src": "main.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "data/**",
+          "levels.json",
+          "settings.py"
+        ]
+      }
     }
   ],
   "routes": [
